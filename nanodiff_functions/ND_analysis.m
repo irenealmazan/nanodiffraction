@@ -7,6 +7,83 @@ classdef ND_analysis
     
     methods(Static)
         
+        
+        function diff_data = computeCentroids(merlimgs,ROIinteg)
+           
+            numimgs = size(merlimgs,3);
+            diff_data = zeros(numimgs,4);
+            
+            for ii = 1:size(merlimgs,3)
+            
+                ccd = merlimgs(:,:,ii);
+                
+                diff_data(ii,1) = sum(sum(ccd));
+                
+                if(~isempty(ROIinteg))
+                    diff_data(ii,4) = sum(sum(ccd(ROIinteg(1):ROIinteg(2), ROIinteg(3):ROIinteg(4))));
+                end
+                
+               
+                    line1=sum(ccd,1);  % vertical
+                    line2=sum(ccd,2);  % horizontal
+                    for kk=1:size(line1,2)
+                        diff_data(ii,2)=diff_data(ii,2)+kk*line1(kk)/diff_data(ii,1);
+                    end
+                    for kk=1:size(line2,1)
+                        diff_data(ii,3)=diff_data(ii,3)+kk*line2(kk)/diff_data(ii,1);
+                    end
+                
+            end
+        end
+        
+        
+        function fly2Dmaps = computeCentroids_rockCurve(fly2Dmaps,do_mask)
+           
+            tempim = zeros(numel(fly2Dmaps.ii),numel(fly2Dmaps.ii(1).jj));
+            tempxcen = zeros(numel(fly2Dmaps.ii),numel(fly2Dmaps.ii(1).jj));
+            tempycen = zeros(numel(fly2Dmaps.ii),numel(fly2Dmaps.ii(1).jj));
+            
+            for kk = 1:numel(fly2Dmaps.ii)
+                for ll = 1:numel(fly2Dmaps.ii(1).jj)
+                    tempim(kk,ll) = fly2Dmaps.ii(kk).jj(ll).SumInt;
+                    imgin =fly2Dmaps.ii(kk).jj(ll).im;
+                    
+                    line1=sum(imgin,1);  % vertical
+                    line2=sum(imgin,2);  % horizontal
+                    sumt = sum(sum(imgin));
+                    
+                    if fly2Dmaps.mask_rock(kk,ll) == 1
+                        if fly2Dmaps.mask(kk,ll) == 1
+                            if sumt==0
+                                tempycen(kk,ll)= 0;
+                                tempxcen(kk,ll)= 0;
+                            else
+                                
+                                for mm=1:size(line1,2)
+                                    tempycen(kk,ll)=tempycen(kk,ll)+mm*line1(mm)/sumt;
+                                end
+                                for mm=1:size(line2,1)
+                                    tempxcen(kk,ll)=tempxcen(kk,ll)+mm*line2(mm)/sumt;
+                                end
+                            end
+                        end
+                    end
+                    
+                end
+            end
+            
+            if do_mask == 1
+                fly2Dmaps.Xcentroids = tempxcen.*fly2Dmaps.mask.*fly2Dmaps.mask_rock;
+                fly2Dmaps.Ycentroids = tempycen.*fly2Dmaps.mask.*fly2Dmaps.mask_rock;
+            else
+                fly2Dmaps.Xcentroids = tempxcen.*fly2Dmaps.mask.*fly2Dmaps.mask_rock;
+                fly2Dmaps.Ycentroids = tempycen.*fly2Dmaps.mask.*fly2Dmaps.mask_rock;
+            end
+            
+        end
+        
+        
+        
         function [struct_centroidShift] = computeCentroidShift(dat1,plotflag)
             
             eval('Init_parameters');
@@ -271,7 +348,29 @@ figure(2); clf; imagesc(azi_proj); axis image; colorbar; title('tangential proje
         end
        
         
-         
+        function [mask,dat1] = calculateMask(dat1,percent)
+            
+            mask_rock = ones(numel(dat1.ii),numel(dat1.ii(1).jj));
+            for kk = 1:numel(dat1.ii)
+                for ll = 1:numel(dat1.ii(kk).jj)
+                    map2D_SumInt(kk,ll) = dat1.ii(kk).jj(ll).SumInt;
+                    [max_val,max_rock_curve(kk,ll)] = max(dat1.ii(kk).jj(ll).intensity);
+                    
+                    if max_rock_curve(kk,ll) == numel(dat1.ii(kk).jj(ll).intensity)
+                        mask_rock(kk,ll) = 0 ;
+                    end
+                    
+                end
+            end
+            
+            % mask for intensities
+            mask = map2D_SumInt > percent*max(max(map2D_SumInt));
+            
+            % mask for rocking curve
+            
+            dat1.mask = mask;
+            dat1.mask_rock = mask_rock;
+        end
         
     end
     

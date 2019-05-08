@@ -1,9 +1,9 @@
 kf = [ 0 0 1 ]';
 ki = [ 0.2865 -0.1771 0.9416 ]';
-ROIxstart = 50;
-ROIystart = 81;
-ROIxsize = 200;
-ROIysize = 200;
+ROIxstart = 1;%50;
+ROIystart = 133;%81;
+ROIxsize = 404;%200;
+ROIysize = 380%200;
 % Parameters of Cu(Ga,In)Se2
 %approximately 30% Ga.
 a_CuInSe2 = 5.814; c_CuInSe2 = 11.63;  %https://link.springer.com/article/10.1007/BF02654305-4;

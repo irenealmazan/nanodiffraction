@@ -8,10 +8,10 @@ classdef ND_read_data
     methods(Static)
         
         
-        function [scandata,merlimgs,hfig1,hfig2] = loadscan_HXN(datapath,scanid,detchan,varargin)
+        function [scandata,merlimgs,scandata_pad,hfig1,hfig2] = loadscan_HXN(datapath,scanid,detchan,varargin)
             
             % Create instance of inputParser class.
-            p = inputParser; 
+            p = inputParser;
             
             
             addRequired(p,'datapath', @ischar);
@@ -26,6 +26,9 @@ classdef ND_read_data
             addParameter(p,'innerpts', 0, @isnumeric);
             addParameter(p,'outerpts', 0, @isnumeric);
             addParameter(p,'do_centroids', 1, @isnumeric);
+            addParameter(p,'do_padding', 0, @isnumeric);
+            addParameter(p,'outerpts_zeropad',0,@isnumeric);
+            addParameter(p,'innerpts_zeropad',0,@isnumeric);
             parse(p,datapath,scanid,detchan,varargin{:});
             
             %read the inputs:
@@ -40,17 +43,21 @@ classdef ND_read_data
             detchan  = p.Results.detchan;
             
             pResults = p.Results;
-         
-            if inneraxis=='y'
+            
+            if p.Results.inneraxis=='y'
                 innerchan=2;
                 outerchan=1;
-            elseif inneraxis=='z'
+            elseif p.Results.inneraxis=='z'
                 innerchan=3;
                 outerchan=2;
             else
                 innerchan=1;
                 outerchan=2;
             end
+            
+            pResults.innerchan = innerchan;
+            pResults.outerchan = outerchan;
+            
             %innerchan = 2; %zpsy
             %innerchan = 1; %zpsx
             %outerchan=2;
@@ -61,238 +68,149 @@ classdef ND_read_data
             
             %pixx is horizontal in hutch
             %pixy is vertical in hutch
-            pixx = size(merlimgs,2); 
+            pixx = size(merlimgs,2);
             pixy = size(merlimgs,1);
+                      
+                     
+            if not(p.Results.innerpts)==0
+                innerpts  = p.Results.innerpts;                
+                if not(p.Results.outerpts)==0
+                    outerpts=round(numimgs/innerpts);
+                else
+                    outerpts = p.Results.outerpts;
+                end
+            else
+                disp('did not specify inner points')
+                return
+            end
             
-            diff_data = zeros(numimgs,3);
+            %outerpts=round(numimgs/innerpts);
+            pResults.outerpts = outerpts;
+            
+            % store ccd images
+            
+            for ii = 1:numimgs
+                %    ccd = flipud(rot90(double(merlimgs(:,:,ii)))); %old version of hd5
+                %    reader
+                ccd = double(merlimgs(:,:,ii));
+                
+                if(~isempty(hotpixels))
+                    for ll = size(hotpixels,1)
+                        ccd(hotpixels(ll,2),hotpixels(ll,1)) = 0;
+                    end
+                end
+                
+                if flag_struct.domedian
+                    ccd1 = zeros(size(ccd,1),size(ccd,2),5);
+                    ccd1(:,:,1) = ccd;
+                    ccd1(:,:,2) = circshift(ccd,[0,1]);
+                    ccd1(:,:,3) = circshift(ccd,[1,0]);
+                    ccd1(:,:,4) = circshift(ccd,[0,-1]);
+                    ccd1(:,:,5) = circshift(ccd,[-1,0]);
+                    ccd2 = median(ccd1,3);
+                    ccdmask = ccd>ccd2+50;
+                    ccd = ccd.*(1-ccdmask)+ccd2.*ccdmask;
+                end
+                
+                merlimgs(:,:,ii) = ccd;
+                %diff_data(ii,1) = sum(sum(double(merlimgs(40:149,75:142,ii)).*hotmask(40:149,75:142)));
+                
+                
+            end
+            
+             if(flag_struct.do_centroids)
+                    diff_data = ND_analysis.computeCentroids(merlimgs,ROIinteg);
+                    [scandata,scandata_pad] = ND_read_data.getLinearData(pResults,diff_data);
+              end
+            
            
-            
-            % scan dimensions
-            if(flag_struct.flyscan)
-                txtfid = fopen([datapath '/scan_' num2str(scanid) '.txt']);
-                
-                tline = fgetl(txtfid);
-                
-                innerpts = 0;
-                innerdone=0;
-                
-               
-                for ii=1:numimgs
-                    %if(mod(ii,10)==0) waitbar(ii/numimgs); end
-                    temp1=fscanf(txtfid,'%f ',51);
-                    tempx = fscanf(txtfid,'%s',2);
-                    temp2 = fscanf(txtfid,'%f ',3);
-                    if(not(innerdone))
-                        if ii==1;
-                            tempin = temp2(innerchan);
-                        else
-                            innerpts=innerpts+1;
-                            if((abs(temp2(innerchan)-tempin)<0.05)||ii==numimgs)
-                                innerdone=1;
-                            end
-                        end
-                    end
-                    
-                end
-                
-                if not(p.Results.innerpts)==0 
-                    innerpts  = p.Results.innerpts;                   
-                end
-                    
-                 outerpts=round(numimgs/innerpts);
-                 pResults.outerpts = outerpts;
-                 
-                 % store ccd images
-                
-                for ii = 1:numimgs
-                    %    ccd = flipud(rot90(double(merlimgs(:,:,ii)))); %old version of hd5
-                    %    reader
-                    ccd = double(merlimgs(:,:,ii));
-                    
-                    if(~isempty(hotpixels))
-                        for ll = size(hotpixels,1)
-                            ccd(hotpixels(ll,2),hotpixels(ll,1)) = 0;
-                        end
-                    end
-                    
-                    if flag_struct.domedian
-                        ccd1 = zeros(size(ccd,1),size(ccd,2),5);
-                        ccd1(:,:,1) = ccd;
-                        ccd1(:,:,2) = circshift(ccd,[0,1]);
-                        ccd1(:,:,3) = circshift(ccd,[1,0]);
-                        ccd1(:,:,4) = circshift(ccd,[0,-1]);
-                        ccd1(:,:,5) = circshift(ccd,[-1,0]);
-                        ccd2 = median(ccd1,3);
-                        ccdmask = ccd>ccd2+50;
-                        ccd = ccd.*(1-ccdmask)+ccd2.*ccdmask;
-                    end
-                    
-                    merlimgs(:,:,ii) = ccd;
-                    %diff_data(ii,1) = sum(sum(double(merlimgs(40:149,75:142,ii)).*hotmask(40:149,75:142)));
-                    
-                    diff_data(ii,1) = sum(sum(ccd));
-                    
-                    if(~isempty(ROIinteg))
-                        diff_data(ii,4) = sum(sum(ccd(ROIinteg(1):ROIinteg(2), ROIinteg(3):ROIinteg(4))));
-                    end
-                    
-                    if(flag_struct.do_centroids)
-                        line1=sum(ccd,1);  % vertical
-                        line2=sum(ccd,2);  % horizontal
-                        for kk=1:size(line1,2)
-                            diff_data(ii,2)=diff_data(ii,2)+kk*line1(kk)/diff_data(ii,1);
-                        end
-                        for kk=1:size(line2,1)
-                            diff_data(ii,3)=diff_data(ii,3)+kk*line2(kk)/diff_data(ii,1);
-                        end
-                    end
-                    
-                end
-                %clear innerpts
-                
-                %% EDIT INNER SCANS
-                %{
-                if(ismember(scanid,[45202])) %need to change when adding scans
-                    innerpts = 20;
-                elseif(ismember(scanid,[45728 45732:45740 45751 45752:45776])) %need to change when adding scans
-                    innerpts = 60;
-                elseif(ismember(scanid,[45745 45750 45781:45830 45915:45917, 45969:45970])) %need to change when adding scans
-                    innerpts = 20;
-                elseif(ismember(scanid,[45853:45902,45907:45910, 45971:45975])) %need to change when adding scans
-                    innerpts = 32;
-                elseif(ismember(scanid,[45913:45914]))
-                    innerpts = 11;
-                elseif(ismember(scanid,[45918:45957, 45976:46015]))
-                    innerpts = 40;
-                end%close(h);
-                %}
-                
-                if exist('innerpts')==0
-                    disp('did not specify inner points')
-                    return
-                end
-                
-                
-               
-            else %only used if doing dscan
-                innerpts=100; %SET MANUALLY
-                outerpts=100; %SET MANUALLY
-                for ii=1:numimgs
-                    imgin =double(merlimgs(:,:,ii));
-                    hotmask=double(merlimgs(:,:,ii))<2000;
-                    line1=sum(imgin.*hotmask,1);  % vertical
-                    line2=sum(imgin.*hotmask,2);  % horizontal
-                    diff_data(ii,1)=sum(sum(imgin.*hotmask));
-                    for kk=1:size(line1,2)
-                        diff_data(ii,2)=diff_data(ii,2)+kk*line1(kk)/diff_data(ii,1);
-                    end
-                    for kk=1:size(line2,1)
-                        diff_data(ii,3)=diff_data(ii,3)+kk*line2(kk)/diff_data(ii,1);
-                    end
-                end
-            end
-            
-            if(~isempty(ROIinteg))
-                scandata = zeros(outerpts,innerpts,8);
-            else
-                scandata = zeros(outerpts, innerpts, 9);
-            end
-            
-            % get linear data
-            if(flag_struct.flyscan)
-                frewind(txtfid);
-                tline = fgetl(txtfid);
-                for ii=1:outerpts
-                    for jj=1:innerpts
-                        temp1=fscanf(txtfid,'%f ',51+6); %used to be 60, used to be 51 March 6, 2018
-                        tempx = fscanf(txtfid,'%s',2);
-                        temp2 = fscanf(txtfid,'%f ',3);
-                        scandata(ii,jj,1) = temp1(detchan);
-                        scandata(ii,jj,4) = temp1(53); %this is correct - IC3
-                        scandata(ii,jj,2) = temp2(outerchan);
-                        scandata(ii,jj,3) = temp2(innerchan);
-                        scandata(ii,jj,5) = diff_data((ii-1)*innerpts+jj,1);
-                        scandata(ii,jj,6) = diff_data((ii-1)*innerpts+jj,2);
-                        scandata(ii,jj,7) = diff_data((ii-1)*innerpts+jj,3);
-                        scandata(ii,jj,8) = (ii-1)*innerpts+jj;
-                        if(~isempty(ROIinteg))
-                            scandata(ii,jj,9) = diff_data((ii-1)*innerpts+jj,4);
-                        end
-                    end
-                end
-            else
-                for ii=1:outerpts
-                    for jj=1:innerpts
-                        scandata(ii,jj,2) = ii*0.1;
-                        scandata(ii,jj,3) = jj*0.1;
-                        scandata(ii,jj,4) = 1;
-                        scandata(ii,jj,5) = diff_data((ii-1)*innerpts+jj,1);
-                        scandata(ii,jj,6) = diff_data((ii-1)*innerpts+jj,2);
-                        scandata(ii,jj,7) = diff_data((ii-1)*innerpts+jj,3);
-                        scandata(ii,jj,8) = (ii-1)*innerpts+jj;
-                    end
-                end
-            end
-            
-            %{
-merlfilepath = [datapath '/scan2Dexport_' num2str(scanid) '.h5'];
-merlhdfpath = ['/HXN_' num2str(scanid) '/primary/data/merlin1'];
-
-%merl = h5read([datapath '/scan2Dexport_' num2str(scanid) '.h5'], ['/HXN_' num2str(scanid) '/primary/data/merlin1']);
-x = h5read([datapath '/scan2Dexport_' num2str(scanid) '.h5'], ['/HXN_' num2str(scanid) '/primary/data/zpssx']);
-y= h5read([datapath '/scan2Dexport_' num2str(scanid) '.h5'], ['/HXN_' num2str(scanid) '/primary/data/zpssy']);
-I0= h5read([datapath '/scan2Dexport_' num2str(scanid) '.h5'], ['/HXN_' num2str(scanid) '/primary/data/sclr1_ch4']);
-fluo = h5read([datapath '/scan2Dexport_' num2str(scanid) '.h5'], ['/HXN_' num2str(scanid) '/primary/data/Det2_' detchan]);
-%merl = squeeze(merl);
-header = h5readatt([datapath '/scan2Dexport_' num2str(scanid) '.h5'], ['/HXN_' num2str(scanid)], 'start');
-%pixx = size(merl,2); pixy = size(merl,1);
-pixx = 515; pixy = 515;
-
-k = strfind(header, '"shape":');
-st = header{1}(k{1}:(k{1}+30));
-st = strsplit(st);
-
-xpts = str2num(st{2}(2:end-1));
-ypts = str2num(st{3}(1:end-2));
-
-scandata = zeros(ypts,xpts,4);
-
-%ccdnames = cell(ypts,xpts);
-%merl2 = zeros([xpts ypts size(merl(:,:,1))]);
-
-cnt = 1;
-for ii=1:ypts
-    for jj=1:xpts
-        
-        merlind = jj+(ii-1)*xpts;
-        scandata(ii,jj,3)=x(cnt);
-        scandata(ii,jj,2)=y(cnt);
-        scandata(ii,jj,1)=fluo(cnt);
-        scandata(ii,jj,4)=I0(cnt);
-        
-        merlstruct(ii,jj).A = ['h5read(''' merlfilepath ''', ''' merlhdfpath ''', [1 1 1 ' num2str(merlind) '], [' num2str([pixx pixy]) ' 1 1],[1 1 1 1])'];
-        
-        %merl2(ii,jj,:,:) = merl(:,:,cnt);
-        %ccdnames{ii}{jj}=[datapath '/Images/' num2str(scanid) '/' AA{index1}(end-47:end)];
-        cnt = cnt + 1;
-    end
-end
-            %}
             %%{
             if flag_struct.showmerlin==1
-              hfig1 =  ND_display_data.showmerlin_function(scandata,pResults,pixx,pixy,2000)
+                if p.Results.do_padding == 1
+                    hfig1 =  ND_display_data.showmerlin_function(scandata_pad,pResults,pixx,pixy,2000);
+                else
+                    hfig1 =  ND_display_data.showmerlin_function(scandata,pResults,pixx,pixy,2000);
+                end
             end
             
             if flag_struct.do_centroids==1
-              hfig2 =  ND_display_data.show_centroid(scandata,pResults,pixx,pixy,2000)
+                 if p.Results.do_padding == 1
+                    hfig2 =  ND_display_data.show_centroid(scandata_pad,pResults,pixx,pixy,2000);
+                 else
+                    hfig2 =  ND_display_data.show_centroid(scandata,pResults,pixx,pixy,2000);
+                 end
             end
             
             %}
-        
-        
+            
+            
         end
         
-         function [ fly2Dmaps,imapx,imapy,sumim ] = ThetaScan_film(datapath, scanid, detchan,varargin)
+        function [scandata,scandata_pad] = getLinearData(pResults,diff_data)
+            
+           
+            if(~isempty(pResults.ROIinteg))
+                scandata = zeros(pResults.outerpts,pResults.innerpts,8);
+            else
+                scandata = zeros(pResults.outerpts, pResults.innerpts, 9);
+            end
+            
+            % get linear data
+            filename = [pResults.datapath '/scan_' num2str(pResults.scanid) '.txt'];
+            
+            %[scan,variable_names_cell] = ND_read_data.importfile(filename, 1, pResults.innerpts*pResults.outerpts);
+        
+            
+            txtfid = fopen(filename);
+            
+            tline = fgetl(txtfid);
+            
+            if(pResults.flyscan)
+                frewind(txtfid);
+                tline = fgetl(txtfid);
+                for ii=1:pResults.outerpts
+                    for jj=1:pResults.innerpts
+                        temp1=fscanf(txtfid,'%f ',51+6); %used to be 60, used to be 51 March 6, 2018
+                        tempx = fscanf(txtfid,'%s',2);
+                        temp2 = fscanf(txtfid,'%f ',3);
+                        scandata(ii,jj,1) = temp1(pResults.detchan);
+                        scandata(ii,jj,4) = temp1(53); %this is correct - IC3
+                        scandata(ii,jj,2) = temp2(pResults.outerchan);
+                        scandata(ii,jj,3) = temp2(pResults.innerchan);
+                        scandata(ii,jj,5) = diff_data((ii-1)*pResults.innerpts+jj,1);
+                        scandata(ii,jj,6) = diff_data((ii-1)*pResults.innerpts+jj,2);
+                        scandata(ii,jj,7) = diff_data((ii-1)*pResults.innerpts+jj,3);
+                        scandata(ii,jj,8) = (ii-1)*pResults.innerpts+jj;
+                        if(~isempty(pResults.ROIinteg))
+                            scandata(ii,jj,9) = diff_data((ii-1)*pResults.innerpts+jj,4);
+                        end
+                    end
+                end
+            else
+                for ii=1:pResults.outerpts
+                    for jj=1:pResults.innerpts
+                        scandata(ii,jj,2) = ii*0.1;
+                        scandata(ii,jj,3) = jj*0.1;
+                        scandata(ii,jj,4) = 1;
+                        scandata(ii,jj,5) = diff_data((ii-1)*pResults.innerpts+jj,1);
+                        scandata(ii,jj,6) = diff_data((ii-1)*pResults.innerpts+jj,2);
+                        scandata(ii,jj,7) = diff_data((ii-1)*pResults.innerpts+jj,3);
+                        scandata(ii,jj,8) = (ii-1)*pResults.innerpts+jj;
+                    end
+                end
+            end
+            
+            scandata_pad = zeros(pResults.outerpts+pResults.outerpts_zeropad,pResults.innerpts+pResults.innerpts_zeropad,size(scandata,3));
+            
+            center_pad = round(size(scandata_pad(:,:,1))./2);
+            center_orig = round(size(scandata(:,:,1))./2);
+            
+            scandata_pad(center_pad(1)-center_orig(1):center_pad(1)+center_orig(1)-1,...
+                center_pad(2)-center_orig(2):center_pad(2)+center_orig(2)-1,:)= scandata;
+            
+        end
+        
+        function [ fly2Dmaps,imapx,imapy,sumim ] = ThetaScan_film(datapath, scanid, detchan,varargin)
             
               p = inputParser; 
             
@@ -311,6 +229,9 @@ end
             addParameter(p,'innerpts', 0, @isnumeric);
             addParameter(p,'outerpts', 0, @isnumeric);
             addParameter(p,'do_centroids', 1, @isnumeric);
+            addParameter(p,'do_padding', 0, @isnumeric);
+            addParameter(p,'outerpts_zeropad',0,@isnumeric);
+            addParameter(p,'innerpts_zeropad',0,@isnumeric);
             parse(p,datapath,scanid,detchan,varargin{:});
             
             %read the inputs:
@@ -336,9 +257,14 @@ end
             end
 
            
-            
-            [dataout,imgsout] = ND_read_data.loadscan_HXN(datapath,scanid(1),detchan,'innerpts',p.Results.innerpts,'showmerlin',p.Results.showmerlin);
-            [datatrash,imgstrash] = ND_read_data.loadscan_HXN(datapath,scanid(1), 46,'innerpts',p.Results.innerpts,'showmerlin',p.Results.showmerlin); %% reads out the photo current;
+            if p.Results.do_padding
+                [dataout_orig,imgsout,dataout] = ND_read_data.loadscan_HXN(datapath,scanid(1),detchan,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'innerpts_zeropad',p.Results.innerpts_zeropad,'outerpts_zeropad',p.Results.outerpts_zeropad,'showmerlin',p.Results.showmerlin,'do_padding',1);
+                [datatrash_orig,imgstrash,datatrash] = ND_read_data.loadscan_HXN(datapath,scanid(1), 46,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'innerpts_zeropad',p.Results.innerpts_zeropad,'outerpts_zeropad',p.Results.outerpts_zeropad,'showmerlin',p.Results.showmerlin,'do_padding',1); %% reads out the photo current;
+            else
+                [dataout,imgsout] = ND_read_data.loadscan_HXN(datapath,scanid(1),detchan,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'showmerlin',p.Results.showmerlin,'do_padding',0);
+                [datatrash,imgstrash] = ND_read_data.loadscan_HXN(datapath,scanid(1), 46,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'showmerlin',p.Results.showmerlin,'do_padding',0); %% reads out the photo current;
+            end
+          
             
             XRF0 = dataout(:,:,1)./dataout(:,:,4);
             PC0 = datatrash(:,:,1)./datatrash(:,:,4);
@@ -362,36 +288,50 @@ end
             fly2Dmaps.scan(1).theta = thetalist(1);
             fly2Dmaps.xaxis = dataout(:,:,3);
             fly2Dmaps.yaxis = dataout(:,:,2);
-            for kk = 1:size(dataout,1)
-                for ll = 1:size(dataout,2)
-                    fly2Dmaps.ii(kk).jj(ll).im = double(imgsout(:,:,dataout(kk,ll,8)))./(numel(scanid));
-                    fly2Dmaps.ii(kk).jj(ll).intensity(1) = dataout(kk,ll,5);
-                    fly2Dmaps.ii(kk).jj(ll).SumInt = dataout(kk,ll,5);
+            
+            if p.Results.do_padding == 0
+                for kk = 1:size(dataout,1)
+                    for ll = 1:size(dataout,2)
+                        fly2Dmaps.ii(kk).jj(ll).im = double(imgsout(:,:,dataout(kk,ll,8)))./(numel(scanid));
+                        fly2Dmaps.ii(kk).jj(ll).intensity(1) = dataout(kk,ll,5);
+                        fly2Dmaps.ii(kk).jj(ll).SumInt = dataout(kk,ll,5);
+                    end
                 end
+            else
+                 for kk = 1:size(dataout,1)
+                    for ll = 1:size(dataout,2)
+                        
+                        if dataout(kk,ll,8) == 0
+                            fly2Dmaps.ii(kk).jj(ll).im = 0.0;
+                        else
+                            fly2Dmaps.ii(kk).jj(ll).im = double(imgsout(:,:,dataout(kk,ll,8)))./(numel(scanid));
+                        end
+                        fly2Dmaps.ii(kk).jj(ll).intensity(1) = dataout(kk,ll,5);
+                        fly2Dmaps.ii(kk).jj(ll).SumInt = dataout(kk,ll,5);
+                    end
+                end
+                
             end
             
             for ii=2:numel(scanid)
                 %for ii=2:2
-                [dataout imgsout] = ND_read_data.loadscan_HXN(datapath,scanid(ii),detchan,'innerpts',p.Results.innerpts,'showmerlin',p.Results.showmerlin);
-                [datatrash imgstrash] =  ND_read_data.loadscan_HXN(datapath,scanid(ii),46,'innerpts',p.Results.innerpts,'showmerlin',p.Results.showmerlin); %% reads out the photo current;
                 
+                if p.Results.do_padding
+                    [dataout_orig,imgsout,dataout] = ND_read_data.loadscan_HXN(datapath,scanid(ii),detchan,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'innerpts_zeropad',p.Results.innerpts_zeropad,'outerpts_zeropad',p.Results.outerpts_zeropad,'showmerlin',p.Results.showmerlin,'do_padding',1);
+                    [datatrash_orig,imgstrash,datatrash] = ND_read_data.loadscan_HXN(datapath,scanid(ii), 46,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'innerpts_zeropad',p.Results.innerpts_zeropad,'outerpts_zeropad',p.Results.outerpts_zeropad,'showmerlin',p.Results.showmerlin,'do_padding',1); %% reads out the photo current;
+                else
+                    [dataout,imgsoutt] = ND_read_data.loadscan_HXN(datapath,scanid(ii),detchan,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'showmerlin',p.Results.showmerlin,'do_padding',0);
+                    [datatrash,imgstrash] = ND_read_data.loadscan_HXN(datapath,scanid(ii), 46,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'showmerlin',p.Results.showmerlin,'do_padding',0); %% reads out the photo current;
+                end
+                
+               
                 XRF1= dataout(:,:,1)./dataout(:,:,4); %normalize by monitor
                 PC1 = datatrash(:,:,1)./datatrash(:,:,4); %photo current normalized by monitor;
                
                 for jj = 1:size(chi2,1)
                     for kk = 1:size(chi2,2)
-                        chi2(jj,kk) = sum(sum((XRF0 - circshift(XRF1,[jj-size(chi2,1)/2,kk-size(chi2,2)/2])).^2));
-                        %{
-                        if ismember(scanid(ii),[40376:40407])  % The Fluo sum is only recorded up to a certain number of points,
-                            %these scans had too many points, so taking a
-                            %subsection of the fluo data to do the chi fitting
-                            tm = min([30,size(XRF1,1)]);
-                            tmat = circshift(XRF1,[jj-size(chi2,1)/2,kk-size(chi2,2)/2]);
-                            chi2(jj,kk) = sum(sum((XRF0(1:tm,:) - tmat(1:tm,:)).^2));
-                        else
-                            chi2(jj,kk) = sum(sum((XRF0 - circshift(XRF1,[jj-size(chi2,1)/2,kk-size(chi2,2)/2])).^2));
-                        end
-                        %}
+                        chi2(jj,kk) = sum(sum((XRF0 - circshift(XRF1,[jj-size(chi2,1)/2,kk-size(chi2,2)/2])).^2,'omitnan'),'omitnan');
+                       
                     end
                 end
                 [xcen,ycen,intemp] = find(chi2==min(min(chi2)));
@@ -399,14 +339,7 @@ end
                 xshifts(ii) = xshifts(ii-1)+xcen-size(chi2,1)/2;
                 yshifts(ii) = yshifts(ii-1)+ycen-size(chi2,2)/2;
            
-                %{
-                figure(3);imagesc(XRF1);axis image tight off;colormap hot;title(['Unshifted Theta: ' num2str(thetalist(ii))]);
-                figure(2);imagesc(circshift(XRF1,[xshifts(ii),yshifts(ii)]));axis image tight off;colormap hot;title(['Theta: ' num2str(thetalist(ii)) ' x shift: ' num2str(yshifts(ii)) ' y shift: ' num2str(xshifts(ii))]);
-                %}
-                
-                %adding in to see the shifts and confirm
-                %saveas(gcf,['~/Desktop/test' num2str(thetalist(ii)) '.pdf'],'pdf')
-                %
+        
                 
                 fly2Dmaps.scan(ii).XRF = circshift(XRF1,[xshifts(ii),yshifts(ii)]);
                 fly2Dmaps.scan(ii).PC = circshift(PC1, [xshifts(ii),yshifts(ii)]);
@@ -416,13 +349,32 @@ end
                 ccdnums = circshift(dataout(:,:,8),[xshifts(ii),yshifts(ii)]);
                 tempints = circshift(dataout(:,:,5),[xshifts(ii),yshifts(ii)]);
                 
-                for kk = 1:size(dataout,1)
-                    for ll = 1:size(dataout,2)
-                        fly2Dmaps.ii(kk).jj(ll).im = fly2Dmaps.ii(kk).jj(ll).im + double(imgsout(:,:,ccdnums(kk,ll)))./(numel(scanid));
-                        fly2Dmaps.ii(kk).jj(ll).intensity(ii) = tempints(kk,ll);
-                        fly2Dmaps.ii(kk).jj(ll).SumInt = fly2Dmaps.ii(kk).jj(ll).SumInt+tempints(kk,ll);
+                if p.Results.do_padding == 0
+                    for kk = 1:size(dataout,1)
+                        for ll = 1:size(dataout,2)
+                            fly2Dmaps.ii(kk).jj(ll).im = fly2Dmaps.ii(kk).jj(ll).im + double(imgsout(:,:,ccdnums(kk,ll)))./(numel(scanid));
+                            fly2Dmaps.ii(kk).jj(ll).intensity(ii) = tempints(kk,ll);
+                            fly2Dmaps.ii(kk).jj(ll).SumInt = fly2Dmaps.ii(kk).jj(ll).SumInt+tempints(kk,ll);
+                        end
                     end
+                else
+                    for kk = 1:size(dataout,1)
+                        for ll = 1:size(dataout,2)
+                            
+                            if ccdnums(kk,ll) == 0
+                                fly2Dmaps.ii(kk).jj(ll).im = 0.0;
+                            else
+                                fly2Dmaps.ii(kk).jj(ll).im = fly2Dmaps.ii(kk).jj(ll).im + double(imgsout(:,:,ccdnums(kk,ll)))./(numel(scanid));
+                            end
+                            fly2Dmaps.ii(kk).jj(ll).intensity(ii) = tempints(kk,ll);
+                            fly2Dmaps.ii(kk).jj(ll).SumInt = fly2Dmaps.ii(kk).jj(ll).SumInt+tempints(kk,ll);
+                        end
+                    end
+                    
                 end
+                
+                
+               
                 XRF0=XRF1;
                 %pause(1);
                 
@@ -476,36 +428,134 @@ end
                 ND_display_data.display2Dmap(tempxcen,'figNum',22,'Xval',imapx,'Yval',imapy,'figTitle','Row Centroids');
                 ND_display_data.display2Dmap(tempycen,'figNum',23,'Xval',imapx,'Yval',imapy,'figTitle',['Column Centroids ']);
             end
-            %{
-            figure(20);hfig=imagesc(dataout(1,:,3),dataout(:,1,2),tempim);axis image tight;colormap hot
-            pass2click.xaxis = [min(dataout(1,:,3)) max(dataout(1,:,3)) size(dataout(1,:,3),2)];
-            pass2click.yaxis = [min(dataout(:,1,2)) max(dataout(:,1,2)) size(dataout(:,1,2),1)];
-            datacursormode on;
-            set(hfig, 'UserData', pass2click);
-            datacursormode on;
-            dcm_obj = datacursormode(gcf);
-            set(dcm_obj, 'DisplayStyle', 'window');
-            set(dcm_obj, 'UpdateFcn', @click4rock_film);
-            %}
-            
-            
-            
-           
-            %{
-            figure(22);clf
-            imagesc(dataout(1,:,3),dataout(:,1,2),tempxcen);axis image tight;colormap hot;title('Row Centroids');
-            figure(23);clf
-            imagesc(dataout(1,:,3),dataout(:,1,2),tempycen);axis image tight;colormap hot;title('Col Centroids');
-%}            
-            
-            %}
-            
+       
             
             
             
         end
-        
    
+       
+        function [scan,variable_names_cell] = importfile(filename, startRow, endRow)
+            %IMPORTFILE Import numeric data from a text file as a matrix.
+            %   SCAN45417 = IMPORTFILE(FILENAME) Reads data from text file FILENAME for
+            %   the default selection.
+            %
+            %   SCAN45417 = IMPORTFILE(FILENAME, STARTROW, ENDROW) Reads data from rows
+            %   STARTROW through ENDROW of text file FILENAME.
+            %
+            % Example:
+            %   scan45417 = importfile('scan_45417.txt', 2, 862);
+            %
+            %    See also TEXTSCAN.
+            
+            % Auto-generated by MATLAB on 2019/05/07 11:22:14
+            
+             fileID = fopen(filename,'r');
+            
+            % Initialize variables.
+            delimiter = '\t';
+            if nargin<=2
+                startRow = 2;
+                endRow = inf;
+            end
+             
+            % Count number of columns
+            
+           [var_struct, variable_names_cell] =  ND_read_data.prepare_header(fileID);
+           
+            formatSpec = '';
+            for kk = 1:numel(var_struct)
+                if strcmp(var_struct(kk).varname,'time') == 1
+                    formatSpec = [formatSpec '%s'];
+                elseif strcmp(var_struct(kk).varname,'sclr1_calculations_calc5_equation') == 1
+                    formatSpec = [formatSpec '%C'];
+                else
+                formatSpec = [formatSpec '%f'];%%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%f%C%f%f%f%f%f%f%s%f%f%f%f%f%f%f%f%f%f%[^\n\r]';
+                end
+            end
+             formatSpec = [formatSpec '%[^\n\r]'];
+            %% Open the text file.
+            
+            
+            %% Read columns of data according to the format.
+            % This call is based on the structure of the file used to generate this
+            % code. If an error occurs for a different file, try regenerating the code
+            % from the Import Tool.
+            dataArray = textscan(fileID,formatSpec, endRow(1)-startRow(1)+1, 'Delimiter', delimiter, 'TextType', 'string', 'EmptyValue', NaN, 'HeaderLines', startRow(1)-1, 'ReturnOnError', false, 'EndOfLine', '\r\n');
+            for block=2:length(startRow)
+                frewind(fileID);
+                dataArrayBlock = textscan(fileID, formatSpec, endRow(block)-startRow(block)+1, 'Delimiter', delimiter, 'TextType', 'string', 'EmptyValue', NaN, 'HeaderLines', startRow(block)-1, 'ReturnOnError', false, 'EndOfLine', '\r\n');
+                for col=1:length(dataArray)
+                    dataArray{col} = [dataArray{col};dataArrayBlock{col}];
+                end
+            end
+            
+            % Close the text file.
+            fclose(fileID);
+          
+    
+            % Create output variable
+            scan = table(dataArray{1:end-1},'VariableNames',variable_names_cell);
+        end
+        
+        function [var_struct, variable_names_cell] =  prepare_header(fileID)
+           
+            
+            tline = fgetl(fileID);
+            
+            % count number of columns:
+            prefix = {'seq','Det','alive','dead','elapsed_time','scaler_alive','sclr','time ','xspress','zpss'};
+            
+            count_col = 0;
+            count_var = 1;
+            for jj = 1:numel(prefix)-1
+                var_index = strfind(tline,prefix{jj});
+                count_col = count_col + count(tline,prefix{jj});
+                
+                for kk = 1:count(tline,prefix{jj})
+                    space_array = isspace(tline(var_index(kk):var_index(kk)+15));
+                    index_nonzero = find(space_array == 1);
+                    
+                    if sum(index_nonzero) == 0
+                        space_array = isspace(tline(var_index(kk):var_index(kk)+45));
+                        index_nonzero = find(space_array == 1);
+                    end
+                    
+                    
+                    var_struct(count_var).varname = sscanf(tline(var_index(kk):var_index(kk)+index_nonzero(1)-1),'%s');
+                    
+                    count_var = count_var + 1;
+                    
+                end
+                
+                
+                
+            end
+            
+            jj = numel(prefix);
+            
+            var_index = strfind(tline,prefix{jj});
+            count_col = count_col + count(tline,prefix{jj});
+            
+            for kk = 1:count(tline,prefix{jj})-1
+                space_array = isspace(tline(var_index(kk):end));
+                index_nonzero = find(space_array == 1);
+                
+                
+                var_struct(count_var).varname = sscanf(tline(var_index(kk):var_index(kk)+index_nonzero(1)-1),'%s');
+                
+                count_var = count_var + 1;
+            end
+            
+            kk = count(tline,prefix{jj});
+            var_struct(count_var).varname = sscanf(tline(var_index(kk):end),'%s');
+            
+            
+            for jj =1:numel(var_struct)
+                variable_names_cell{jj} = var_struct(jj).varname;
+            end
+            
+        end
         
     end
 end

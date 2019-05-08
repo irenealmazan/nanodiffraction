@@ -141,13 +141,66 @@ classdef ND_display_data
             
             
         end
-          
-        function hfig = displayRockCurve(scanid,fly2Dmaps,varargin)
+      
+          function hfig = displayRockCurveLine(scanid,fly2Dmaps,pix_list,varargin)
+            p = inputParser;
+            
+            addRequired(p,'scanid');
+            addRequired(p,'fly2DMaps');
+            addRequired(p,'pix_list');
+            addParameter(p,'figNum',1,@isnumeric);
+            addParameter(p,'titleXray',1,@isnumeric);
+            addParameter(p,'titleFluo',1,@isnumeric);
+            addParameter(p,'titleXBIC',1,@isnumeric);
+            %addParameter(p,'Xval',[1:size(map2D,1)],@isnumeric);
+            %addParameter(p,'Yval',[1:size(map2D,2)],@isnumeric);
+            %addParameter(p,'figTitle','',@ischar);
+            
+            parse(p,scanid,fly2Dmaps,pix_list,varargin{:});
+            
+            numRows_unique = unique(p.Results.pix_list(:,1));
+            numCols_unique = unique(p.Results.pix_list(:,2));
+            
+            num_supblots = numel(numRows_unique);
+            
+            
+            
+            for kk = 1:numel(p.Results.pix_list(:,1))
+                for ll = 1:numel(p.Results.pix_list(:,2))
+                    for jj = 1:numel(scanid)
+                        
+                       diff_map(kk,jj,ll) = fly2Dmaps.ii(p.Results.pix_list(kk,1)).jj(p.Results.pix_list(ll,2)).intensity(jj);
+                       thetalist(jj) = fly2Dmaps.scan(jj).theta;
+                    end
+                end
+                
+                
+            end
+            
+            figure(p.Results.figNum);
+            clf;
+            
+            if numel(numRows_unique) == 1
+                imagesc(p.Results.pix_list(:,2),thetalist,squeeze(diff_map(1,:,:)));
+                title(['Rocking curve at row = ' num2str(p.Results.pix_list(1,1))]);
+                colormap jet;
+            elseif numel(numCols_unique) == 1
+                imagesc(p.Results.pix_list(:,1),thetalist,squeeze(diff_map(:,1,:)));
+                title(['Rocking curve at column = ' num2str(p.Results.pix_list(1,2))]);
+                colormap jet;
+                %axis image;
+            end
+            
+        end
+       
+        
+        function [rock_curve,thetalist] = displayRockCurveMaps(scanid,fly2Dmaps,varargin)
             p = inputParser;
             
             addRequired(p,'scanid');
             addRequired(p,'fly2DMaps');
             addParameter(p,'figNum',1,@isnumeric);
+            addParameter(p,'do_mask',0,@isnumeric);
             addParameter(p,'titleXray',1,@isnumeric);
             addParameter(p,'titleFluo',1,@isnumeric);
             addParameter(p,'titleXBIC',1,@isnumeric);
@@ -167,7 +220,12 @@ classdef ND_display_data
             for jj = 1:numel(scanid)
                 for kk = 1:numel(fly2Dmaps.ii)
                     for ll = 1:numel(fly2Dmaps.ii(kk).jj)
-                        diff_map(kk,ll) = fly2Dmaps.ii(kk).jj(ll).intensity(jj);                       
+                        if p.Results.do_mask == 0
+                            diff_map(kk,ll) = fly2Dmaps.ii(kk).jj(ll).intensity(jj);
+                        else
+                            diff_map(kk,ll) = fly2Dmaps.mask(kk,ll)*fly2Dmaps.mask_rock(kk,ll)*fly2Dmaps.ii(kk).jj(ll).intensity(jj);
+                            
+                        end
                     end
                 end
                 
@@ -184,7 +242,7 @@ classdef ND_display_data
                 %subplot(numel(scanid),4,jj);
                 subplot(numRows,numCols,mod(jj-1,numCols)+1);
                 h_struct(jj).hfig = imagesc(diff_map);
-                title(['Diffraction intensity scanid = ' num2str(scanid(jj))]);
+                title(['Diffr. int. # ' num2str(scanid(jj)) ' th = ' num2str(thetalist(jj))]);
                 colormap jet;
                 axis image;
                 if jj == 1
@@ -194,12 +252,12 @@ classdef ND_display_data
                 %subplot(numel(scanid),4,2*4+jj);
                 subplot(numRows,numCols,(numCols)+mod(jj-1,numCols)+1);
                 h_struct(jj).hfig = imagesc(fly2Dmaps.scan(jj).XRF);
-                title(['X-ray Fluo. scanid = ' num2str(scanid(jj))]);
+                title(['X-ray Fluo.  # ' num2str(scanid(jj)) ' th = ' num2str(thetalist(jj))]);
                 colormap jet;
                 
                 subplot(numRows,numCols,(numCols)*2+mod(jj-1,numCols)+1);
                 h_struct(jj).hfig = imagesc(fly2Dmaps.scan(jj).PC);
-                title(['Photo. current scanid = ' num2str(scanid(jj))]);
+                title(['Photo. current # ' num2str(scanid(jj)) ' th = ' num2str(thetalist(jj))]);
                 colormap jet;
             end
             
@@ -267,6 +325,7 @@ classdef ND_display_data
             hfig=imagesc(p.Results.Xval,p.Results.Yval,map2D);
             axis image;
             colormap jet;
+            colorbar
             title(p.Results.figTitle);
 
             
