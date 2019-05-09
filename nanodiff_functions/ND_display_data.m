@@ -14,7 +14,7 @@ classdef ND_display_data
             figure(fignum);
             clf reset;
             if(pResults.outerpts>1)
-                hfig = imagesc(scandata(1,:,3),scandata(:,1,2),scandata(:,:,1)./scandata(:,:,4)*mean(mean(scandata(:,:,4))));
+                hfig = imagesc(scandata(1,:,3),scandata(:,1,2),scandata(:,:,1));%./scandata(:,:,4)*mean(mean(scandata(:,:,4))));
                 colormap jet; shading interp;colorbar; set(gca, 'YDir', 'reverse');axis image
             else
                 %hfig=plot(scandata(1,:,3),scandata(1,:,1)./scandata(1,:,4)*mean(scandata(1,:,4)));
@@ -27,26 +27,6 @@ classdef ND_display_data
             %set(gca, 'FontSize',8);
             title(['Scan: ' num2str(pResults.scanid) '  Detector: ' num2str(pResults.detchan)], 'Interpreter', 'none', 'FontSize', 10);
             
-            pass2click.imrows = pResults.outerpts;
-            pass2click.imcols = pResults.innerpts;
-            %pass2click.merl = merl2;
-            %     if(outerpts>1)
-            pass2click.xaxis = [min(scandata(1,:,3)) max(scandata(1,:,3)) size(scandata(1,:,3),2)];
-            %     else
-            %         pass2click.xaxis = [min(scandata(1,:,2)) max(scandata(1,:,2)) size(scandata(1,:,2),2)];
-            %     end
-            pass2click.yaxis = [min(scandata(:,1,2)) max(scandata(:,1,2)) size(scandata(:,1,2),1)];
-            pass2click.merlfilepath = [pResults.datapath '/scan_' num2str(pResults.scanid) '.h5'];
-            pass2click.merlhdfpath = pResults.datapath;
-            pass2click.pixx = pixx;
-            pass2click.pixy = pixy;
-            pass2click.ccdnums = scandata(:,:,8);
-            
-            set(hfig, 'UserData', pass2click);
-            datacursormode on;
-            dcm_obj = datacursormode(gcf);
-            set(dcm_obj, 'DisplayStyle', 'window');
-            set(dcm_obj, 'UpdateFcn', @click4ccd_nsls);
             
             figure(fignum+10);
             clf reset;
@@ -65,12 +45,7 @@ classdef ND_display_data
             %set(gca, 'FontSize',8);
             title(['Scan: ' num2str(pResults.scanid) '  Detector: Integrated diffraction'], 'Interpreter', 'none', 'FontSize', 10);
             
-            set(hfig, 'UserData', pass2click);
-            datacursormode on;
-            dcm_obj = datacursormode(gcf);
-            set(dcm_obj, 'DisplayStyle', 'window');
-            set(dcm_obj, 'UpdateFcn', @click4ccd_nsls);
-            
+
             if(~isempty(pResults.ROIinteg))
                 figure(fignum+11);
                 imagesc(scandata(:,:,9));
@@ -222,9 +197,10 @@ classdef ND_display_data
                     for ll = 1:numel(fly2Dmaps.ii(kk).jj)
                         if p.Results.do_mask == 0
                             diff_map(kk,ll) = fly2Dmaps.ii(kk).jj(ll).intensity(jj);
+                            PC_map(kk,ll) = fly2Dmaps.scan(jj).PC(kk,ll);
                         else
                             diff_map(kk,ll) = fly2Dmaps.mask(kk,ll)*fly2Dmaps.mask_rock(kk,ll)*fly2Dmaps.ii(kk).jj(ll).intensity(jj);
-                            
+                            PC_map(kk,ll) = fly2Dmaps.scan(jj).PC(kk,ll)*fly2Dmaps.mask_rock(kk,ll)*fly2Dmaps.mask(kk,ll);
                         end
                     end
                 end
@@ -233,33 +209,59 @@ classdef ND_display_data
                 thetalist(jj) = fly2Dmaps.scan(jj).theta;
                 
                 if mod(jj-1,numCols) == 0
-                    figure(p.Results.figNum+counter);           
-                    clf; 
-                    set(gcf,'Name',['Rock curve' num2str(counter) '/' num2str(numFigs)]);
+                    figure(p.Results.figNum+counter);
+                    clf;
+                    set(gcf,'Name',['Rock curve' num2str(counter) '/' num2str(numFigs)]);                                        
+                    set(gcf, 'Position', [100 100 1300 800]);
+                    set(gcf, 'PaperPosition', [.25 6.75 4.5 4]);
+                    set(gcf, 'Color' ,'w');
+                    set(gca, 'FontSize',8);
+                    
                     counter = counter + 1;
+                    
                 end
                 
                 %subplot(numel(scanid),4,jj);
                 subplot(numRows,numCols,mod(jj-1,numCols)+1);
                 h_struct(jj).hfig = imagesc(diff_map);
-                title(['Diffr. int. # ' num2str(scanid(jj)) ' th = ' num2str(thetalist(jj))]);
+                title({['Diffr. int. # ' num2str(scanid(jj))],[ ' th = ' num2str(thetalist(jj))]});
                 colormap jet;
                 axis image;
+                colorbar;
+                %{
                 if jj == 1
                     colorbar;
                 end
+                %}
                 
                 %subplot(numel(scanid),4,2*4+jj);
                 subplot(numRows,numCols,(numCols)+mod(jj-1,numCols)+1);
-                h_struct(jj).hfig = imagesc(fly2Dmaps.scan(jj).XRF);
-                title(['X-ray Fluo.  # ' num2str(scanid(jj)) ' th = ' num2str(thetalist(jj))]);
+                h_struct(jj).hfig = imagesc(fly2Dmaps.scan(jj).XRF./fly2Dmaps.scan(jj).PC);
+                title({['X-ray Fluo.  # ' num2str(scanid(jj))],[ ' th = ' num2str(thetalist(jj)) 'norm by PC']});
                 colormap jet;
+                axis image;
+                colorbar;
+                %{
+                if jj == 1
+                    colorbar;
+                end
+                %}
                 
                 subplot(numRows,numCols,(numCols)*2+mod(jj-1,numCols)+1);
-                h_struct(jj).hfig = imagesc(fly2Dmaps.scan(jj).PC);
-                title(['Photo. current # ' num2str(scanid(jj)) ' th = ' num2str(thetalist(jj))]);
+                h_struct(jj).hfig = imagesc(PC_map);
+                title({['Photo. current # ' num2str(scanid(jj))] , [' th = ' num2str(thetalist(jj))]});
                 colormap jet;
+                axis image;
+                colorbar;
+                %{
+                if jj == 1
+                    colorbar;
+                end
+                %}
+                
             end
+            
+           
             
             figure(numFigs+500);
             plot(thetalist,rock_curve,'LineWidth',3.0);

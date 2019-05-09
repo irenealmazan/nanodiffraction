@@ -37,7 +37,7 @@ classdef ND_analysis
         end
         
         
-        function fly2Dmaps = computeCentroids_rockCurve(fly2Dmaps,do_mask)
+        function fly2Dmaps = computeCentroids_rockCurve(fly2Dmaps)
            
             tempim = zeros(numel(fly2Dmaps.ii),numel(fly2Dmaps.ii(1).jj));
             tempxcen = zeros(numel(fly2Dmaps.ii),numel(fly2Dmaps.ii(1).jj));
@@ -72,19 +72,14 @@ classdef ND_analysis
                 end
             end
             
-            if do_mask == 1
-                fly2Dmaps.Xcentroids = tempxcen.*fly2Dmaps.mask.*fly2Dmaps.mask_rock;
-                fly2Dmaps.Ycentroids = tempycen.*fly2Dmaps.mask.*fly2Dmaps.mask_rock;
-            else
-                fly2Dmaps.Xcentroids = tempxcen.*fly2Dmaps.mask.*fly2Dmaps.mask_rock;
-                fly2Dmaps.Ycentroids = tempycen.*fly2Dmaps.mask.*fly2Dmaps.mask_rock;
-            end
-            
+            fly2Dmaps.Xcentroids = tempxcen;
+            fly2Dmaps.Ycentroids = tempycen;
+
         end
         
         
         
-        function [struct_centroidShift] = computeCentroidShift(dat1,plotflag)
+        function [struct_centroidShift] = computeCentroidShift(dat1,ROIxstart,ROIxsize,ROIystart,ROIysize,plotflag)
             
             eval('Init_parameters');
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -119,17 +114,19 @@ classdef ND_analysis
             
             meanval_x = [];  %calculate the mean centroid value, excluding fluo
             meanval_y = [];
-            XRFtemp = dat1.scan(1).XRF(:);
+            XRFtemp = dat1.scan(1).XRF(:).*dat1.mask(:).*dat1.mask_rock(:);
+            mask_array = dat1.mask(:).*dat1.mask_rock(:);
             minXRF = max(XRFtemp)*0.1;
             for ii = 1:numel(xcen)
-                radial_proj(ii) = ROI_radial(ycen(ii),xcen(ii));
-                azi_proj(ii) = ROI_azi(ycen(ii),xcen(ii));
-                
-                if XRFtemp(ii)>minXRF
-                    meanval_x = [meanval_x, radial_proj(ii)];
-                    meanval_y = [meanval_y, azi_proj(ii)];
+                if xcen(ii) ~=0
+                        radial_proj(ii) = ROI_radial(ycen(ii),xcen(ii));
+                        azi_proj(ii) = ROI_azi(ycen(ii),xcen(ii));
+                        
+                        if XRFtemp(ii)>minXRF
+                            meanval_x = [meanval_x, radial_proj(ii)];
+                            meanval_y = [meanval_y, azi_proj(ii)];
+                        end
                 end
-                
             end
             
             meanval_radial = mean(meanval_x);
@@ -191,7 +188,7 @@ figure(2); clf; imagesc(azi_proj); axis image; colorbar; title('tangential proje
             
         end
         
-        function [strain_struct] = calculateStrain(dat1,plotflag)
+        function [strain_struct] = calculateStrain(dat1,ROIxstart,ROIxsize,ROIystart,ROIysize,plotflag)
             % Convert to strain
             eval('Init_parameters');
             

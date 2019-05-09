@@ -12,11 +12,12 @@ classdef ND_read_data
             
             % Create instance of inputParser class.
             p = inputParser;
-            
-            
+           
             addRequired(p,'datapath', @ischar);
             addRequired(p,'scanid', @isnumeric);
-            addRequired(p,'detchan', @isnumeric);
+            addRequired(p,'detchan', @ischar);
+            addParameter(p,'MonChan','sclr1_ch3' ,@ischar);
+            addParameter(p,'prefix',{'seq','Det','alive','dead','elapsed_time','scaler_alive','sclr','time','xspress','zpss'},@iscell);
             addParameter(p,'showmerlin', 1, @isnumeric);
             addParameter(p,'inneraxis', 'z', @ischar);
             addParameter(p,'flyscan', 1, @isnumeric);
@@ -45,14 +46,14 @@ classdef ND_read_data
             pResults = p.Results;
             
             if p.Results.inneraxis=='y'
-                innerchan=2;
-                outerchan=1;
+                innerchan='zpssy'; %2
+                outerchan='zpssx';%1;
             elseif p.Results.inneraxis=='z'
-                innerchan=3;
-                outerchan=2;
+                innerchan='zpssz';%3;
+                outerchan='zpssy';%2;
             else
-                innerchan=1;
-                outerchan=2;
+                innerchan='zpssx';%1;
+                outerchan='zpssy';%2;
             end
             
             pResults.innerchan = innerchan;
@@ -147,7 +148,8 @@ classdef ND_read_data
         end
         
         function [scandata,scandata_pad] = getLinearData(pResults,diff_data)
-            
+
+            prefix = pResults.prefix;
            
             if(~isempty(pResults.ROIinteg))
                 scandata = zeros(pResults.outerpts,pResults.innerpts,8);
@@ -158,25 +160,21 @@ classdef ND_read_data
             % get linear data
             filename = [pResults.datapath '/scan_' num2str(pResults.scanid) '.txt'];
             
-            %[scan,variable_names_cell] = ND_read_data.importfile(filename, 1, pResults.innerpts*pResults.outerpts);
-        
+            [scan,variable_names_cell] = ND_read_data.importfile(filename, 1, pResults.innerpts*pResults.outerpts,'prefix',pResults.prefix);
+            temp1 = scan{:,pResults.detchan};
+            temp11 = scan{:,pResults.MonChan};
+            temp2 = scan{:,pResults.outerchan};
+            temp3 = scan{:,pResults.innerchan};
             
-            txtfid = fopen(filename);
-            
-            tline = fgetl(txtfid);
+           
             
             if(pResults.flyscan)
-                frewind(txtfid);
-                tline = fgetl(txtfid);
                 for ii=1:pResults.outerpts
-                    for jj=1:pResults.innerpts
-                        temp1=fscanf(txtfid,'%f ',51+6); %used to be 60, used to be 51 March 6, 2018
-                        tempx = fscanf(txtfid,'%s',2);
-                        temp2 = fscanf(txtfid,'%f ',3);
-                        scandata(ii,jj,1) = temp1(pResults.detchan);
-                        scandata(ii,jj,4) = temp1(53); %this is correct - IC3
-                        scandata(ii,jj,2) = temp2(pResults.outerchan);
-                        scandata(ii,jj,3) = temp2(pResults.innerchan);
+                    for jj=1:pResults.innerpts                       
+                        scandata(ii,jj,1) = temp1((ii-1)*pResults.innerpts+jj);%temp1(pResults.detchan);
+                        scandata(ii,jj,4) = temp11((ii-1)*pResults.innerpts+jj);%temp1(53); %this is correct - IC3
+                        scandata(ii,jj,2) = temp2((ii-1)*pResults.innerpts+jj);
+                        scandata(ii,jj,3) = temp3((ii-1)*pResults.innerpts+jj);
                         scandata(ii,jj,5) = diff_data((ii-1)*pResults.innerpts+jj,1);
                         scandata(ii,jj,6) = diff_data((ii-1)*pResults.innerpts+jj,2);
                         scandata(ii,jj,7) = diff_data((ii-1)*pResults.innerpts+jj,3);
@@ -200,14 +198,22 @@ classdef ND_read_data
                 end
             end
             
-            scandata_pad = zeros(pResults.outerpts+pResults.outerpts_zeropad,pResults.innerpts+pResults.innerpts_zeropad,size(scandata,3));
-            
-            center_pad = round(size(scandata_pad(:,:,1))./2);
-            center_orig = round(size(scandata(:,:,1))./2);
-            
-            scandata_pad(center_pad(1)-center_orig(1):center_pad(1)+center_orig(1)-1,...
-                center_pad(2)-center_orig(2):center_pad(2)+center_orig(2)-1,:)= scandata;
-            
+            if pResults.do_padding == 1
+                scandata_pad = zeros(pResults.outerpts+pResults.outerpts_zeropad,pResults.innerpts+pResults.innerpts_zeropad,size(scandata,3));
+                
+                center_pad = round(size(scandata_pad(:,:,1))./2);
+                center_orig = round(size(scandata(:,:,1))./2);
+                
+                if mod(size(scandata(:,:,1),1),2) == 0
+                scandata_pad(center_pad(1)-center_orig(1):center_pad(1)+center_orig(1)-1,...
+                    center_pad(2)-center_orig(2):center_pad(2)+center_orig(2)-1,:)= scandata;
+                else
+                   scandata_pad(center_pad(1)-center_orig(1)+1:center_pad(1)+center_orig(1)-1,...
+                    center_pad(2)-center_orig(2)+1:center_pad(2)+center_orig(2)-1,:)= scandata; 
+                end
+            else
+                scandata_pad = scandata;
+            end
         end
         
         function [ fly2Dmaps,imapx,imapy,sumim ] = ThetaScan_film(datapath, scanid, detchan,varargin)
@@ -217,8 +223,11 @@ classdef ND_read_data
             
             addRequired(p,'datapath', @ischar);
             addRequired(p,'scanid');
-            addRequired(p,'detchan', @isnumeric);
+            addRequired(p,'detchan', @ischar);
             addParameter(p,'thetalist',[]);
+            addParameter(p,'MonChan','sclr1_ch3',@ischar);
+            addParameter(p,'XBICchan','sclr1_ch3',@ischar);
+            addParameter(p,'prefix',{'seq','Det','alive','dead','elapsed_time','scaler_alive','sclr','time','xspress','zpss'},@iscell);
             addParameter(p,'showmerlin', 1, @isnumeric);
             addParameter(p,'plotflag', 0, @isnumeric);
             addParameter(p,'inneraxis', 'z', @ischar);
@@ -245,6 +254,9 @@ classdef ND_read_data
             ROIinteg  = p.Results.ROIinteg;
             hotpixels = p.Results.hotpixels;
             detchan  = p.Results.detchan;
+            MonChan = p.Results.MonChan;
+            prefix = p.Results.prefix;
+            XBICchan = p.Results.XBICchan;
             
             pResults = p.Results;
             
@@ -258,16 +270,16 @@ classdef ND_read_data
 
            
             if p.Results.do_padding
-                [dataout_orig,imgsout,dataout] = ND_read_data.loadscan_HXN(datapath,scanid(1),detchan,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'innerpts_zeropad',p.Results.innerpts_zeropad,'outerpts_zeropad',p.Results.outerpts_zeropad,'showmerlin',p.Results.showmerlin,'do_padding',1);
-                [datatrash_orig,imgstrash,datatrash] = ND_read_data.loadscan_HXN(datapath,scanid(1), 46,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'innerpts_zeropad',p.Results.innerpts_zeropad,'outerpts_zeropad',p.Results.outerpts_zeropad,'showmerlin',p.Results.showmerlin,'do_padding',1); %% reads out the photo current;
+                [dataout_orig,imgsout,dataout] = ND_read_data.loadscan_HXN(datapath,scanid(1),detchan,'prefix',prefix,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'innerpts_zeropad',p.Results.innerpts_zeropad,'outerpts_zeropad',p.Results.outerpts_zeropad,'showmerlin',p.Results.showmerlin,'do_padding',1);
+                [datatrash_orig,imgstrash,datatrash] = ND_read_data.loadscan_HXN(datapath,scanid(1), XBICchan,'prefix',prefix,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'innerpts_zeropad',p.Results.innerpts_zeropad,'outerpts_zeropad',p.Results.outerpts_zeropad,'showmerlin',p.Results.showmerlin,'do_padding',1); %% reads out the photo current;
             else
-                [dataout,imgsout] = ND_read_data.loadscan_HXN(datapath,scanid(1),detchan,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'showmerlin',p.Results.showmerlin,'do_padding',0);
-                [datatrash,imgstrash] = ND_read_data.loadscan_HXN(datapath,scanid(1), 46,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'showmerlin',p.Results.showmerlin,'do_padding',0); %% reads out the photo current;
+                [dataout,imgsout] = ND_read_data.loadscan_HXN(datapath,scanid(1),detchan,'prefix',prefix,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'showmerlin',p.Results.showmerlin,'do_padding',0);
+                [datatrash,imgstrash] = ND_read_data.loadscan_HXN(datapath,scanid(1), XBICchan,'prefix',prefix,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'showmerlin',p.Results.showmerlin,'do_padding',0); %% reads out the photo current;
             end
           
             
-            XRF0 = dataout(:,:,1)./dataout(:,:,4);
-            PC0 = datatrash(:,:,1)./datatrash(:,:,4);
+            XRF0 = dataout(:,:,1);%./dataout(:,:,4);
+            PC0 = datatrash(:,:,1);%./datatrash(:,:,4);
             
 
             %{
@@ -317,16 +329,16 @@ classdef ND_read_data
                 %for ii=2:2
                 
                 if p.Results.do_padding
-                    [dataout_orig,imgsout,dataout] = ND_read_data.loadscan_HXN(datapath,scanid(ii),detchan,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'innerpts_zeropad',p.Results.innerpts_zeropad,'outerpts_zeropad',p.Results.outerpts_zeropad,'showmerlin',p.Results.showmerlin,'do_padding',1);
-                    [datatrash_orig,imgstrash,datatrash] = ND_read_data.loadscan_HXN(datapath,scanid(ii), 46,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'innerpts_zeropad',p.Results.innerpts_zeropad,'outerpts_zeropad',p.Results.outerpts_zeropad,'showmerlin',p.Results.showmerlin,'do_padding',1); %% reads out the photo current;
+                    [dataout_orig,imgsout,dataout] = ND_read_data.loadscan_HXN(datapath,scanid(ii),detchan,'prefix',prefix,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'innerpts_zeropad',p.Results.innerpts_zeropad,'outerpts_zeropad',p.Results.outerpts_zeropad,'showmerlin',p.Results.showmerlin,'do_padding',1);
+                    [datatrash_orig,imgstrash,datatrash] = ND_read_data.loadscan_HXN(datapath,scanid(ii), XBICchan,'prefix',prefix,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'innerpts_zeropad',p.Results.innerpts_zeropad,'outerpts_zeropad',p.Results.outerpts_zeropad,'showmerlin',p.Results.showmerlin,'do_padding',1); %% reads out the photo current;
                 else
-                    [dataout,imgsoutt] = ND_read_data.loadscan_HXN(datapath,scanid(ii),detchan,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'showmerlin',p.Results.showmerlin,'do_padding',0);
-                    [datatrash,imgstrash] = ND_read_data.loadscan_HXN(datapath,scanid(ii), 46,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'showmerlin',p.Results.showmerlin,'do_padding',0); %% reads out the photo current;
+                    [dataout,imgsoutt] = ND_read_data.loadscan_HXN(datapath,scanid(ii),detchan,'prefix',prefix,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'showmerlin',p.Results.showmerlin,'do_padding',0);
+                    [datatrash,imgstrash] = ND_read_data.loadscan_HXN(datapath,scanid(ii), XBICchan,'prefix',prefix,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'showmerlin',p.Results.showmerlin,'do_padding',0); %% reads out the photo current;
                 end
                 
                
-                XRF1= dataout(:,:,1)./dataout(:,:,4); %normalize by monitor
-                PC1 = datatrash(:,:,1)./datatrash(:,:,4); %photo current normalized by monitor;
+                XRF1= dataout(:,:,1);%./dataout(:,:,4); %normalize by monitor
+                PC1 = datatrash(:,:,1);%./datatrash(:,:,4); %photo current normalized by monitor;
                
                 for jj = 1:size(chi2,1)
                     for kk = 1:size(chi2,2)
@@ -418,6 +430,8 @@ classdef ND_read_data
             
             fly2Dmaps.Xcentroids = tempxcen;
             fly2Dmaps.Ycentroids = tempycen;
+            fly2Dmaps.imapx = dataout(1,:,3);
+            fly2Dmaps.imapy = dataout(:,1,2);
             imapx = dataout(1,:,3);
             imapy = dataout(:,1,2);
             sumim = tempim;
@@ -435,7 +449,8 @@ classdef ND_read_data
         end
    
        
-        function [scan,variable_names_cell] = importfile(filename, startRow, endRow)
+        function [scan,variable_names_cell] = importfile(filename, startRow, endRow,varargin)
+            
             %IMPORTFILE Import numeric data from a text file as a matrix.
             %   SCAN45417 = IMPORTFILE(FILENAME) Reads data from text file FILENAME for
             %   the default selection.
@@ -450,6 +465,22 @@ classdef ND_read_data
             
             % Auto-generated by MATLAB on 2019/05/07 11:22:14
             
+            
+            p = inputParser;
+            
+            addRequired(p,'filename');
+            addRequired(p,'startRow');
+            addRequired(p,'endRow');
+            addParameter(p,'prefix',{'seq','Det','alive','dead','elapsed_time','scaler_alive','sclr','time','xspress','zpss'},@iscell);
+            
+            parse(p,filename,startRow,endRow,varargin{:});
+
+            
+            filename = p.Results.filename;
+            startRow = p.Results.startRow;
+            endRow = p.Results.endRow;
+            prefix = p.Results.prefix;
+            
              fileID = fopen(filename,'r');
             
             % Initialize variables.
@@ -461,7 +492,7 @@ classdef ND_read_data
              
             % Count number of columns
             
-           [var_struct, variable_names_cell] =  ND_read_data.prepare_header(fileID);
+           [var_struct, variable_names_cell] =  ND_read_data.prepare_header(fileID,'prefix',prefix);
            
             formatSpec = '';
             for kk = 1:numel(var_struct)
@@ -498,21 +529,34 @@ classdef ND_read_data
             scan = table(dataArray{1:end-1},'VariableNames',variable_names_cell);
         end
         
-        function [var_struct, variable_names_cell] =  prepare_header(fileID)
-           
+        function [var_struct, variable_names_cell] =  prepare_header(fileID,varargin)
             
-            tline = fgetl(fileID);
+            p = inputParser;
+            
+            addRequired(p,'fileID');
+            addParameter(p,'prefix',{'seq','Det','alive','dead','elapsed_time','scaler_alive','sclr','time','xspress','zpss'},@iscell);
+            
+            parse(p,fileID,varargin{:});
+            frewind(p.Results.fileID)
+            
+            tline = fgetl(p.Results.fileID);
             
             % count number of columns:
-            prefix = {'seq','Det','alive','dead','elapsed_time','scaler_alive','sclr','time ','xspress','zpss'};
+            %prefix = {'seq','Det','alive','dead','elapsed_time','scaler_alive','sclr','time','xspress','zpss'};
+            prefix = p.Results.prefix;
             
             count_col = 0;
             count_var = 1;
             for jj = 1:numel(prefix)-1
                 var_index = strfind(tline,prefix{jj});
-                count_col = count_col + count(tline,prefix{jj});
+                if ~isempty(var_index)
+                    if ismember(prefix{jj},{'alive','dead','elapsed_time','scaler_alive','time'})
+                        var_index = var_index(1);
+                    end
+                end
+                count_col = count_col + numel(var_index);%count(tline,prefix{jj});
                 
-                for kk = 1:count(tline,prefix{jj})
+                for kk = 1:numel(var_index)
                     space_array = isspace(tline(var_index(kk):var_index(kk)+15));
                     index_nonzero = find(space_array == 1);
                     
@@ -535,9 +579,13 @@ classdef ND_read_data
             jj = numel(prefix);
             
             var_index = strfind(tline,prefix{jj});
-            count_col = count_col + count(tline,prefix{jj});
+            if ismember(prefix{jj},{'alive','dead','elapsed_time','scaler_alive','time'})
+                var_index = var_index(1);
+            end
             
-            for kk = 1:count(tline,prefix{jj})-1
+            count_col = count_col + numel(var_index);%count(tline,prefix{jj});
+            
+            for kk = 1:numel(var_index)-1
                 space_array = isspace(tline(var_index(kk):end));
                 index_nonzero = find(space_array == 1);
                 
@@ -547,7 +595,7 @@ classdef ND_read_data
                 count_var = count_var + 1;
             end
             
-            kk = count(tline,prefix{jj});
+            kk = numel(var_index);
             var_struct(count_var).varname = sscanf(tline(var_index(kk):end),'%s');
             
             
