@@ -120,7 +120,7 @@ classdef ND_read_data
             end
             
              if(flag_struct.do_centroids)
-                    diff_data = ND_analysis.computeCentroids(merlimgs,ROIinteg);
+                    diff_data = ND_analysis.computeCentroidsfromDet(merlimgs,ROIinteg);
                     [scandata,scandata_pad] = ND_read_data.getLinearData(pResults,diff_data);
               end
             
@@ -175,9 +175,9 @@ classdef ND_read_data
                         scandata(ii,jj,4) = temp11((ii-1)*pResults.innerpts+jj);%temp1(53); %this is correct - IC3
                         scandata(ii,jj,2) = temp2((ii-1)*pResults.innerpts+jj);
                         scandata(ii,jj,3) = temp3((ii-1)*pResults.innerpts+jj);
-                        scandata(ii,jj,5) = diff_data((ii-1)*pResults.innerpts+jj,1);
-                        scandata(ii,jj,6) = diff_data((ii-1)*pResults.innerpts+jj,2);
-                        scandata(ii,jj,7) = diff_data((ii-1)*pResults.innerpts+jj,3);
+                        scandata(ii,jj,5) = diff_data((ii-1)*pResults.innerpts+jj,1); % diffraction map for each angle = sum(sum(ccd))
+                        scandata(ii,jj,6) = diff_data((ii-1)*pResults.innerpts+jj,2); % vertical centroid
+                        scandata(ii,jj,7) = diff_data((ii-1)*pResults.innerpts+jj,3); % horizontal centroid
                         scandata(ii,jj,8) = (ii-1)*pResults.innerpts+jj;
                         if(~isempty(pResults.ROIinteg))
                             scandata(ii,jj,9) = diff_data((ii-1)*pResults.innerpts+jj,4);
@@ -304,9 +304,9 @@ classdef ND_read_data
             if p.Results.do_padding == 0
                 for kk = 1:size(dataout,1)
                     for ll = 1:size(dataout,2)
-                        fly2Dmaps.ii(kk).jj(ll).im = double(imgsout(:,:,dataout(kk,ll,8)))./(numel(scanid));
-                        fly2Dmaps.ii(kk).jj(ll).intensity(1) = dataout(kk,ll,5);
-                        fly2Dmaps.ii(kk).jj(ll).SumInt = dataout(kk,ll,5);
+                        fly2Dmaps.ii(kk).jj(ll).im = double(imgsout(:,:,dataout(kk,ll,8)))./(numel(scanid)); % cumulative ccd (512x512)
+                        fly2Dmaps.ii(kk).jj(ll).intensity(1) = dataout(kk,ll,5); % = sum(sum(ccd)) -> scalar
+                        fly2Dmaps.ii(kk).jj(ll).SumInt = dataout(kk,ll,5); % = sum_angles(sum(sum(ccd))) -> scalar
                     end
                 end
             else
@@ -430,6 +430,8 @@ classdef ND_read_data
             
             fly2Dmaps.Xcentroids = tempxcen;
             fly2Dmaps.Ycentroids = tempycen;
+
+
             fly2Dmaps.imapx = dataout(1,:,3);
             fly2Dmaps.imapy = dataout(:,1,2);
             imapx = dataout(1,:,3);

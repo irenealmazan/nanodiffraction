@@ -8,7 +8,7 @@ classdef ND_analysis
     methods(Static)
         
         
-        function diff_data = computeCentroids(merlimgs,ROIinteg)
+        function diff_data = computeCentroidsfromDet(merlimgs,ROIinteg)
            
             numimgs = size(merlimgs,3);
             diff_data = zeros(numimgs,4);
@@ -122,7 +122,8 @@ classdef ND_analysis
                         radial_proj(ii) = ROI_radial(ycen(ii),xcen(ii));
                         azi_proj(ii) = ROI_azi(ycen(ii),xcen(ii));
                         
-                        if XRFtemp(ii)>minXRF
+                        if dat1.mask(ii)
+                        %if XRFtemp(ii)>minXRF
                             meanval_x = [meanval_x, radial_proj(ii)];
                             meanval_y = [meanval_y, azi_proj(ii)];
                         end
@@ -176,12 +177,12 @@ figure(2); clf; imagesc(azi_proj); axis image; colorbar; title('tangential proje
                 
                 alpha(p3,0.5)
                 %}
-                figure(1); clf; imagesc(dat1.xaxis(1,:),dat1.yaxis(:,1),xcen); colorbar; title('xcen');
-                figure(2); clf; imagesc(dat1.xaxis(1,:),dat1.yaxis(:,1),ycen); colorbar; title('ycen');
-                figure(3); clf; imagesc(dat1.xaxis(1,:),dat1.yaxis(:,1),radial_proj); colorbar; title('radial cen');
-                figure(4); clf; imagesc(dat1.xaxis(1,:),dat1.yaxis(:,1),azi_proj); colorbar; title('tangential cen');
-                figure(5); clf; imagesc(strain); colorbar; title('strain-v2');
-                figure(6); clf; imagesc(tilt); colorbar; title('tilt-v2');
+                figure(1); clf; imagesc(dat1.xaxis(1,:),dat1.yaxis(:,1),xcen); colorbar; title('xcen');axis image;
+                figure(2); clf; imagesc(dat1.xaxis(1,:),dat1.yaxis(:,1),ycen); colorbar; title('ycen');axis image;
+                figure(3); clf; imagesc(dat1.xaxis(1,:),dat1.yaxis(:,1),radial_proj); colorbar; title('radial cen');axis image;
+                figure(4); clf; imagesc(dat1.xaxis(1,:),dat1.yaxis(:,1),azi_proj); colorbar; title('tangential cen');axis image;
+                figure(5); clf; imagesc(strain); colorbar; title('strain-v2');axis image;
+                figure(6); clf; imagesc(tilt); colorbar; title('tilt-v2');axis image;
          
             end
             %}
