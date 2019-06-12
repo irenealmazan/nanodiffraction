@@ -1,6 +1,18 @@
 % this is the master script for the data in Hruszkewycz_2018Q1, CdTe taken
 % at HXN (NSLS2) in March 2018
 
+
+% test alignment
+
+%RockCurve1_script;
+RockCurve9_10_script;
+%RockCurve11_script;
+RockCurve12_script;
+RockCurve7_script;
+
+
+return;
+
 clear all; close all;
 
 addpath(genpath('./nanodiff_functions'));
@@ -166,7 +178,7 @@ angs = [th_start:th_step:th_end];
 
 %% Rocking curve 6, HXN beamtimes line 352
 %lst1_theo = [45346:1:45366];
-%%{
+%{
 lst1 = [45417:1:45437]; 
 th_start = 81.38;
 delta_th = 1.0/numel(lst1);
@@ -387,7 +399,7 @@ angs = [th_start:th_step:th_end];
 
 return;
 
-return;
+
  
 %{
 % Rocking curve 2, HXN beamtimes line 208 - not good

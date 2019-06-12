@@ -15,14 +15,14 @@ c_CuInGaSe2 = c_CuInSe2*In_x + c_CuGaSe2*Ga_x;
 d_111 = 3.7412e-4; %using aps sector 7 calculator, in microns
 
 Ekev = 9.0;
-detdist = 0.35e6; % in microns
+%detdist = 0.35e6; % in microns
 lam = etolambda(10400)*1e-4;
-pixsize = 55.;
+pixsize = 55*1e-6; % in meters
 Ndet = 512; % pixels
 
-del = -16.1;
-gam = 13.1;%10.65;
-twoTheta = 21.2;
+% del = -16.1;
+% gam = 13.1;%10.65;
+% twoTheta = 21.2;
 
 degperpix =0.0067;
 
