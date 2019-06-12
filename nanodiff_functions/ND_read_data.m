@@ -8,7 +8,9 @@ classdef ND_read_data
     methods(Static)
         
         
-        function [scandata,merlimgs,scandata_pad,hfig1,hfig2] = loadscan_HXN(datapath,scanid,detchan,varargin)
+        function [scandata,ccdimgs] = loadscan_HXN(datapath,scanid,detchan,varargin)
+            % loadscan_HXN reads the ccd stored in .h5 for a single scan
+            % (2D map in real space at 1 angle) and creates 
             
             % Create instance of inputParser class.
             p = inputParser;
@@ -16,17 +18,17 @@ classdef ND_read_data
             addRequired(p,'datapath', @ischar);
             addRequired(p,'scanid', @isnumeric);
             addRequired(p,'detchan', @ischar);
+            addParameter(p,'use_fitXRF',0,@isnumeric);
             addParameter(p,'MonChan','sclr1_ch3' ,@ischar);
             addParameter(p,'prefix',{'seq','Det','alive','dead','elapsed_time','scaler_alive','sclr','time','xspress','zpss'},@iscell);
-            addParameter(p,'showmerlin', 1, @isnumeric);
+            addParameter(p,'showmerlin', 0, @isnumeric);
             addParameter(p,'inneraxis', 'z', @ischar);
             addParameter(p,'flyscan', 1, @isnumeric);
             addParameter(p,'domedian', 1, @isnumeric);
             addParameter(p,'ROIinteg', [], @isnumeric);
             addParameter(p,'hotpixels', [], @isnumeric);
             addParameter(p,'innerpts', 0, @isnumeric);
-            addParameter(p,'outerpts', 0, @isnumeric);
-            addParameter(p,'do_centroids', 1, @isnumeric);
+            addParameter(p,'outerpts', 0, @isnumeric);          
             addParameter(p,'do_padding', 0, @isnumeric);
             addParameter(p,'outerpts_zeropad',0,@isnumeric);
             addParameter(p,'innerpts_zeropad',0,@isnumeric);
@@ -36,17 +38,12 @@ classdef ND_read_data
             flag_struct.showmerlin   = p.Results.showmerlin;
             flag_struct.flyscan      = p.Results.flyscan;
             flag_struct.domedian     = p.Results.domedian;
-            flag_struct.do_centroids = p.Results.do_centroids;
-            
-            inneraxis = p.Results.inneraxis;
-            ROIinteg  = p.Results.ROIinteg;
-            hotpixels = p.Results.hotpixels;
-            detchan  = p.Results.detchan;
+         
             
             pResults = p.Results;
             
             if p.Results.inneraxis=='y'
-                innerchan='zpssy'; %2
+                innerchan='zpssy';%2
                 outerchan='zpssx';%1;
             elseif p.Results.inneraxis=='z'
                 innerchan='zpssz';%3;
@@ -56,12 +53,40 @@ classdef ND_read_data
                 outerchan='zpssy';%2;
             end
             
-            pResults.innerchan = innerchan;
-            pResults.outerchan = outerchan;
+            [ccdimgs,data_sum_ccd] = ND_read_data.readCCDimages(p.Results.datapath,p.Results.scanid,p.Results.hotpixels,p.Results.domedian);
+                 
+            numimgs = size(ccdimgs,3);
             
-            %innerchan = 2; %zpsy
-            %innerchan = 1; %zpsx
-            %outerchan=2;
+             pResults.innerchan = innerchan;
+            pResults.outerchan = outerchan;
+                        
+             if not(p.Results.innerpts)==0
+                innerpts  = p.Results.innerpts;                
+                if not(p.Results.outerpts)==0
+                    outerpts=round(numimgs/innerpts);
+                else
+                    outerpts = p.Results.outerpts;
+                end
+            else
+                disp('did not specify inner points')
+                return
+             end
+            
+              %outerpts=round(numimgs/innerpts);
+            pResults.outerpts = outerpts;
+            
+            [scandata] = ND_read_data.getLinearDatain2DMap(pResults,data_sum_ccd);
+            
+            if p.Results.do_padding
+                scandata_pad =  ND_data_processing.padData(scandata,p.Results.outerpts_zeropad,p.Results.innerpts_zeropad);
+                scandata = scandata_pad;
+            end
+
+            
+        end
+        
+        function [merlimgs,diff_data]= readCCDimages(datapath,scanid,hotpixels,do_median)
+            
             
             merlimgs = h5read([datapath '/scan_' num2str(scanid) '.h5'],'/entry/instrument/detector/data');
             merlimgs = permute(merlimgs,[2 1 3]);
@@ -73,21 +98,7 @@ classdef ND_read_data
             pixy = size(merlimgs,1);
                       
                      
-            if not(p.Results.innerpts)==0
-                innerpts  = p.Results.innerpts;                
-                if not(p.Results.outerpts)==0
-                    outerpts=round(numimgs/innerpts);
-                else
-                    outerpts = p.Results.outerpts;
-                end
-            else
-                disp('did not specify inner points')
-                return
-            end
-            
-            %outerpts=round(numimgs/innerpts);
-            pResults.outerpts = outerpts;
-            
+           
             % store ccd images
             
             for ii = 1:numimgs
@@ -101,7 +112,7 @@ classdef ND_read_data
                     end
                 end
                 
-                if flag_struct.domedian
+                if do_median
                     ccd1 = zeros(size(ccd,1),size(ccd,2),5);
                     ccd1(:,:,1) = ccd;
                     ccd1(:,:,2) = circshift(ccd,[0,1]);
@@ -114,73 +125,59 @@ classdef ND_read_data
                 end
                 
                 merlimgs(:,:,ii) = ccd;
-                %diff_data(ii,1) = sum(sum(double(merlimgs(40:149,75:142,ii)).*hotmask(40:149,75:142)));
+                diff_data(ii,1) = sum(sum(ccd));
                 
                 
             end
-            
-             if(flag_struct.do_centroids)
-                    diff_data = ND_analysis.computeCentroidsfromDet(merlimgs,ROIinteg);
-                    [scandata,scandata_pad] = ND_read_data.getLinearData(pResults,diff_data);
-              end
-            
-           
-            %%{
-            if flag_struct.showmerlin==1
-                if p.Results.do_padding == 1
-                    hfig1 =  ND_display_data.showmerlin_function(scandata_pad,pResults,pixx,pixy,2000);
-                else
-                    hfig1 =  ND_display_data.showmerlin_function(scandata,pResults,pixx,pixy,2000);
-                end
-            end
-            
-            if flag_struct.do_centroids==1
-                 if p.Results.do_padding == 1
-                    hfig2 =  ND_display_data.show_centroid(scandata_pad,pResults,pixx,pixy,2000);
-                 else
-                    hfig2 =  ND_display_data.show_centroid(scandata,pResults,pixx,pixy,2000);
-                 end
-            end
-            
-            %}
-            
             
         end
         
-        function [scandata,scandata_pad] = getLinearData(pResults,diff_data)
+        function [scandata] = getLinearDatain2DMap(pResults,diff_data)
 
-            prefix = pResults.prefix;
            
             if(~isempty(pResults.ROIinteg))
-                scandata = zeros(pResults.outerpts,pResults.innerpts,8);
+                scandata = zeros(pResults.outerpts,pResults.innerpts,6);
             else
-                scandata = zeros(pResults.outerpts, pResults.innerpts, 9);
+                scandata = zeros(pResults.outerpts, pResults.innerpts, 7);
             end
             
             % get linear data
             filename = [pResults.datapath '/scan_' num2str(pResults.scanid) '.txt'];
             
             [scan,variable_names_cell] = ND_read_data.importfile(filename, 1, pResults.innerpts*pResults.outerpts,'prefix',pResults.prefix);
-            temp1 = scan{:,pResults.detchan};
-            temp11 = scan{:,pResults.MonChan};
-            temp2 = scan{:,pResults.outerchan};
-            temp3 = scan{:,pResults.innerchan};
+
+            if pResults.use_fitXRF == 0
+                temp1 = scan{:,pResults.detchan}; % fluorescence map
+            else
+                % read fluorescence maps from tiff files:
+               t = Tiff([pResults.datapath '/xrf_fit/output_tiff_scan2D_' num2str(pResults.scanid) '/' pResults.detchan num2str(pResults.scanid) '_norm.tiff'],'r');
+               temp = read(t);
+               temp1 = double(temp);
+            end
+            
+            temp11 = scan{:,pResults.MonChan}; % monitor map (I don't know what chanel it is)
+            temp2 = scan{:,pResults.outerchan}; % motor piezo values for the inner loop of the raster scan
+            temp3 = scan{:,pResults.innerchan}; % motor piezo values for the outer loop of the raster scan. I don't know the convention at HXN row/columns - inner/outer
             
            
-            
+            % construct the 2D maps in real space 
             if(pResults.flyscan)
                 for ii=1:pResults.outerpts
-                    for jj=1:pResults.innerpts                       
-                        scandata(ii,jj,1) = temp1((ii-1)*pResults.innerpts+jj);%temp1(pResults.detchan);
-                        scandata(ii,jj,4) = temp11((ii-1)*pResults.innerpts+jj);%temp1(53); %this is correct - IC3
-                        scandata(ii,jj,2) = temp2((ii-1)*pResults.innerpts+jj);
-                        scandata(ii,jj,3) = temp3((ii-1)*pResults.innerpts+jj);
+                    for jj=1:pResults.innerpts
+                        if pResults.use_fitXRF == 0
+                            scandata(ii,jj,1) = temp1((ii-1)*pResults.innerpts+jj);% Fluorescence map
+                        else
+                            scandata(ii,jj,1) = temp1(ii,jj);% Fluorescence map
+                        end
+                        scandata(ii,jj,4) = temp11((ii-1)*pResults.innerpts+jj);% monitor map??
+                        scandata(ii,jj,2) = temp2((ii-1)*pResults.innerpts+jj); % map of the motor piezo positions
+                        scandata(ii,jj,3) = temp3((ii-1)*pResults.innerpts+jj);% map of the motor piezo positions
                         scandata(ii,jj,5) = diff_data((ii-1)*pResults.innerpts+jj,1); % diffraction map for each angle = sum(sum(ccd))
-                        scandata(ii,jj,6) = diff_data((ii-1)*pResults.innerpts+jj,2); % vertical centroid
-                        scandata(ii,jj,7) = diff_data((ii-1)*pResults.innerpts+jj,3); % horizontal centroid
-                        scandata(ii,jj,8) = (ii-1)*pResults.innerpts+jj;
+                        %scandata(ii,jj,6) = diff_data((ii-1)*pResults.innerpts+jj,2); % vertical centroid
+                        %scandata(ii,jj,7) = diff_data((ii-1)*pResults.innerpts+jj,3); % horizontal centroid
+                        scandata(ii,jj,6) = (ii-1)*pResults.innerpts+jj;
                         if(~isempty(pResults.ROIinteg))
-                            scandata(ii,jj,9) = diff_data((ii-1)*pResults.innerpts+jj,4);
+                            scandata(ii,jj,7) = diff_data((ii-1)*pResults.innerpts+jj,4);
                         end
                     end
                 end
@@ -191,32 +188,67 @@ classdef ND_read_data
                         scandata(ii,jj,3) = jj*0.1;
                         scandata(ii,jj,4) = 1;
                         scandata(ii,jj,5) = diff_data((ii-1)*pResults.innerpts+jj,1);
-                        scandata(ii,jj,6) = diff_data((ii-1)*pResults.innerpts+jj,2);
-                        scandata(ii,jj,7) = diff_data((ii-1)*pResults.innerpts+jj,3);
-                        scandata(ii,jj,8) = (ii-1)*pResults.innerpts+jj;
+                        %scandata(ii,jj,6) = diff_data((ii-1)*pResults.innerpts+jj,2);
+                        %scandata(ii,jj,7) = diff_data((ii-1)*pResults.innerpts+jj,3);
+                        scandata(ii,jj,6) = (ii-1)*pResults.innerpts+jj;
                     end
                 end
             end
             
-            if pResults.do_padding == 1
-                scandata_pad = zeros(pResults.outerpts+pResults.outerpts_zeropad,pResults.innerpts+pResults.innerpts_zeropad,size(scandata,3));
-                
-                center_pad = round(size(scandata_pad(:,:,1))./2);
-                center_orig = round(size(scandata(:,:,1))./2);
-                
-                if mod(size(scandata(:,:,1),1),2) == 0
-                scandata_pad(center_pad(1)-center_orig(1):center_pad(1)+center_orig(1)-1,...
-                    center_pad(2)-center_orig(2):center_pad(2)+center_orig(2)-1,:)= scandata;
-                else
-                   scandata_pad(center_pad(1)-center_orig(1)+1:center_pad(1)+center_orig(1)-1,...
-                    center_pad(2)-center_orig(2)+1:center_pad(2)+center_orig(2)-1,:)= scandata; 
-                end
-            else
-                scandata_pad = scandata;
-            end
+         
         end
         
-        function [ fly2Dmaps,imapx,imapy,sumim ] = ThetaScan_film(datapath, scanid, detchan,varargin)
+        function [fly2Dmap_return] = read_tiff_and_getLinearDatain2DMap(datapath,detchan,scanid,fly2Dmap,varargin)
+            
+            p = inputParser;
+            
+            addRequired(p,'datapath', @ischar);
+            addRequired(p,'detchan', @ischar);
+            addRequired(p,'scanid', @isnumeric);
+            addRequired(p,'fly2Dmap', @isstruct);
+            addParameter(p,'innerpts', 0, @isnumeric);
+            addParameter(p,'outerpts', 0, @isnumeric);
+            addParameter(p,'do_padding', 0, @isnumeric);
+            addParameter(p,'outerpts_zeropad',0,@isnumeric);
+            addParameter(p,'innerpts_zeropad',0,@isnumeric);
+            
+            parse(p,datapath,detchan,scanid,fly2Dmap,varargin{:});
+            
+            fly2Dmap_return = p.Results.fly2Dmap;
+            
+            for ii = 1:numel(p.Results.scanid)
+                t = Tiff([p.Results.datapath '/xrf_fit/output_tiff_scan2D_' num2str(p.Results.scanid(ii)) '/' p.Results.detchan '_' num2str(p.Results.scanid(ii)) '.tiff'],'r');
+                temp = read(t);
+                
+                if p.Results.do_padding
+                    if isempty(strfind(p.Results.detchan,'pos'))
+                        scandata_pad = ND_data_processing.padData(double(temp),p.Results.outerpts_zeropad,p.Results.innerpts_zeropad);
+                    else
+                        if ~isempty(strfind(p.Results.detchan,'x_pos'))
+                            scandata_pad = ND_data_processing.padPosData(double(temp),p.Results.outerpts+p.Results.outerpts_zeropad,p.Results.innerpts+p.Results.innerpts_zeropad,1) ;
+                        elseif ~isempty(strfind(p.Results.detchan,'y_pos'))
+                            scandata_pad = ND_data_processing.padPosData(double(temp),p.Results.innerpts+p.Results.innerpts_zeropad,p.Results.outerpts+p.Results.outerpts_zeropad,2) ;
+                        end
+                    end
+                    
+                    fly2Dmap_return.scan(ii).(p.Results.detchan) =  scandata_pad;
+                else
+                    fly2Dmap_return.scan(ii).(p.Results.detchan) = double(temp);
+                end
+                
+                
+            end
+            
+            
+            
+           
+            
+            
+        end
+        
+        
+        
+        function [ fly2Dmaps] = ThetaScan_film(datapath, scanid, detchan,varargin)
             
               p = inputParser; 
             
@@ -224,6 +256,7 @@ classdef ND_read_data
             addRequired(p,'datapath', @ischar);
             addRequired(p,'scanid');
             addRequired(p,'detchan', @ischar);
+            addParameter(p,'use_fitXRF',0,@isnumeric);
             addParameter(p,'thetalist',[]);
             addParameter(p,'MonChan','sclr1_ch3',@ischar);
             addParameter(p,'XBICchan','sclr1_ch3',@ischar);
@@ -237,12 +270,13 @@ classdef ND_read_data
             addParameter(p,'hotpixels', [], @isnumeric);
             addParameter(p,'innerpts', 0, @isnumeric);
             addParameter(p,'outerpts', 0, @isnumeric);
-            addParameter(p,'do_centroids', 1, @isnumeric);
+            addParameter(p,'do_align', 0, @isnumeric);
+            addParameter(p,'do_Ref_XRF0', 0, @isnumeric);
             addParameter(p,'do_padding', 0, @isnumeric);
             addParameter(p,'outerpts_zeropad',0,@isnumeric);
             addParameter(p,'innerpts_zeropad',0,@isnumeric);
             parse(p,datapath,scanid,detchan,varargin{:});
-            
+             
             %read the inputs:
 %             flag_struct.showmerlin   = p.Results.showmerlin;
 %             flag_struct.flyscan      = p.Results.flyscan;
@@ -269,81 +303,74 @@ classdef ND_read_data
             end
 
            
-            if p.Results.do_padding
-                [dataout_orig,imgsout,dataout] = ND_read_data.loadscan_HXN(datapath,scanid(1),detchan,'prefix',prefix,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'innerpts_zeropad',p.Results.innerpts_zeropad,'outerpts_zeropad',p.Results.outerpts_zeropad,'showmerlin',p.Results.showmerlin,'do_padding',1);
-                [datatrash_orig,imgstrash,datatrash] = ND_read_data.loadscan_HXN(datapath,scanid(1), XBICchan,'prefix',prefix,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'innerpts_zeropad',p.Results.innerpts_zeropad,'outerpts_zeropad',p.Results.outerpts_zeropad,'showmerlin',p.Results.showmerlin,'do_padding',1); %% reads out the photo current;
-            else
-                [dataout,imgsout] = ND_read_data.loadscan_HXN(datapath,scanid(1),detchan,'prefix',prefix,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'showmerlin',p.Results.showmerlin,'do_padding',0);
-                [datatrash,imgstrash] = ND_read_data.loadscan_HXN(datapath,scanid(1), XBICchan,'prefix',prefix,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'showmerlin',p.Results.showmerlin,'do_padding',0); %% reads out the photo current;
-            end
-          
-            
+            [dataout,imgsout] = ND_read_data.loadscan_HXN(datapath,scanid(1),detchan,'prefix',prefix,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'innerpts_zeropad',p.Results.innerpts_zeropad,'outerpts_zeropad',p.Results.outerpts_zeropad,'showmerlin',p.Results.showmerlin,'do_padding',p.Results.do_padding,'use_fitXRF',p.Results.use_fitXRF);
+            [datatrash] = ND_read_data.loadscan_HXN(datapath,scanid(1), XBICchan,'prefix',prefix,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'innerpts_zeropad',p.Results.innerpts_zeropad,'outerpts_zeropad',p.Results.outerpts_zeropad,'showmerlin',p.Results.showmerlin,'do_padding',p.Results.do_padding,'use_fitXRF',0); %% reads out the photo current;
+                                   
             XRF0 = dataout(:,:,1);%./dataout(:,:,4);
             PC0 = datatrash(:,:,1);%./datatrash(:,:,4);
             
-
-            %{
-            figure(1);imagesc(XRF0);
-            axis image tight off;
-            colormap hot;
-            title(['Theta: ' num2str(thetalist(1))]);
-            %}
+            XRF_struct.scan(1).XRF = XRF0;
+            
+          
             
             xshifts = zeros(numel(scanid),1);
             yshifts = zeros(numel(scanid),1);
-            chi2 = zeros(10,10);% even numbers here please
+            %chi2 = zeros(10,10);% even numbers here please
             
             fly2Dmaps.scan(1).XRF = XRF0;
             fly2Dmaps.scan(1).PC = PC0;
             fly2Dmaps.scan(1).xshift = xshifts(1);
             fly2Dmaps.scan(1).yshift = yshifts(1);
             fly2Dmaps.scan(1).theta = thetalist(1);
+            fly2Dmaps.scan(1).imgsout = imgsout;
             fly2Dmaps.xaxis = dataout(:,:,3);
             fly2Dmaps.yaxis = dataout(:,:,2);
             
-            if p.Results.do_padding == 0
-                for kk = 1:size(dataout,1)
-                    for ll = 1:size(dataout,2)
-                        fly2Dmaps.ii(kk).jj(ll).im = double(imgsout(:,:,dataout(kk,ll,8)))./(numel(scanid)); % cumulative ccd (512x512)
-                        fly2Dmaps.ii(kk).jj(ll).intensity(1) = dataout(kk,ll,5); % = sum(sum(ccd)) -> scalar
-                        fly2Dmaps.ii(kk).jj(ll).SumInt = dataout(kk,ll,5); % = sum_angles(sum(sum(ccd))) -> scalar
-                    end
-                end
-            else
-                 for kk = 1:size(dataout,1)
-                    for ll = 1:size(dataout,2)
-                        
-                        if dataout(kk,ll,8) == 0
+              for kk = 1:size(dataout,1)
+                for ll = 1:size(dataout,2)
+                    %if p.Results.do_padding == 0
+                        if dataout(kk,ll,6) == 0
                             fly2Dmaps.ii(kk).jj(ll).im = 0.0;
                         else
-                            fly2Dmaps.ii(kk).jj(ll).im = double(imgsout(:,:,dataout(kk,ll,8)))./(numel(scanid));
+                            fly2Dmaps.ii(kk).jj(ll).im = double(imgsout(:,:,dataout(kk,ll,6)))./(numel(scanid)); % sum_angle ccd_angle -> 512x512
                         end
-                        fly2Dmaps.ii(kk).jj(ll).intensity(1) = dataout(kk,ll,5);
-                        fly2Dmaps.ii(kk).jj(ll).SumInt = dataout(kk,ll,5);
-                    end
+                    %end
+                    fly2Dmaps.ii(kk).jj(ll).intensity(1) = dataout(kk,ll,5);%sum(sum(ccd))_angle ->scalar
+                    fly2Dmaps.ii(kk).jj(ll).SumInt = dataout(kk,ll,5); % sum_angle(sum(sum(ccd))) -> scalar
                 end
-                
             end
             
             for ii=2:numel(scanid)
-                %for ii=2:2
+       
                 
-                if p.Results.do_padding
-                    [dataout_orig,imgsout,dataout] = ND_read_data.loadscan_HXN(datapath,scanid(ii),detchan,'prefix',prefix,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'innerpts_zeropad',p.Results.innerpts_zeropad,'outerpts_zeropad',p.Results.outerpts_zeropad,'showmerlin',p.Results.showmerlin,'do_padding',1);
-                    [datatrash_orig,imgstrash,datatrash] = ND_read_data.loadscan_HXN(datapath,scanid(ii), XBICchan,'prefix',prefix,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'innerpts_zeropad',p.Results.innerpts_zeropad,'outerpts_zeropad',p.Results.outerpts_zeropad,'showmerlin',p.Results.showmerlin,'do_padding',1); %% reads out the photo current;
-                else
-                    [dataout,imgsoutt] = ND_read_data.loadscan_HXN(datapath,scanid(ii),detchan,'prefix',prefix,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'showmerlin',p.Results.showmerlin,'do_padding',0);
-                    [datatrash,imgstrash] = ND_read_data.loadscan_HXN(datapath,scanid(ii), XBICchan,'prefix',prefix,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'showmerlin',p.Results.showmerlin,'do_padding',0); %% reads out the photo current;
-                end
-                
+                [dataout,imgsout] = ND_read_data.loadscan_HXN(datapath,scanid(ii),detchan,'prefix',prefix,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'innerpts_zeropad',p.Results.innerpts_zeropad,'outerpts_zeropad',p.Results.outerpts_zeropad,'showmerlin',p.Results.showmerlin,'do_padding',p.Results.do_padding,'use_fitXRF',p.Results.use_fitXRF);
+                [datatrash] = ND_read_data.loadscan_HXN(datapath,scanid(ii), XBICchan,'prefix',prefix,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'innerpts_zeropad',p.Results.innerpts_zeropad,'outerpts_zeropad',p.Results.outerpts_zeropad,'showmerlin',p.Results.showmerlin,'do_padding',p.Results.do_padding,'use_fitXRF',0); %% reads out the photo current;
                
+                
                 XRF1= dataout(:,:,1);%./dataout(:,:,4); %normalize by monitor
                 PC1 = datatrash(:,:,1);%./datatrash(:,:,4); %photo current normalized by monitor;
+                
+                
+                
+                if p.Results.do_align == 0
+                    XRF_struct.scan(2).XRF = XRF0;                 
+                else
+                    XRF_struct.scan(2).XRF = XRF1;  
+                    if p.Results.do_Ref_XRF0 == 0
+                        XRF_struct.scan(1).XRF = fly2Dmaps.scan(ii-1).XRF;
+                    else
+                        XRF_struct.scan(1).XRF = XRF0;
+                    end
+                end
+                
+                
+                
+                XRF_align_struct = ND_analysis.doAlignment(XRF_struct,'scanid',p.Results.scanid,'thetalist',p.Results.thetalist,'do_Ref_XRF0',1);    
+     %{           
                
                 for jj = 1:size(chi2,1)
                     for kk = 1:size(chi2,2)
-                        chi2(jj,kk) = sum(sum((XRF0 - circshift(XRF1,[jj-size(chi2,1)/2,kk-size(chi2,2)/2])).^2,'omitnan'),'omitnan');
-                       
+                        chi2(jj,kk) = sum(sum((XRF0 - circshift(XRF1,[jj-size(chi2,1)/2,kk-size(chi2,2)/2])).^2,'omitnan'),'omitnan');                       
                     end
                 end
                 [xcen,ycen,intemp] = find(chi2==min(min(chi2)));
@@ -351,105 +378,160 @@ classdef ND_read_data
                 xshifts(ii) = xshifts(ii-1)+xcen-size(chi2,1)/2;
                 yshifts(ii) = yshifts(ii-1)+ycen-size(chi2,2)/2;
            
-        
+     %}   
                 
-                fly2Dmaps.scan(ii).XRF = circshift(XRF1,[xshifts(ii),yshifts(ii)]);
-                fly2Dmaps.scan(ii).PC = circshift(PC1, [xshifts(ii),yshifts(ii)]);
-                fly2Dmaps.scan(ii).xshift = xshifts(ii);
-                fly2Dmaps.scan(ii).yshift = yshifts(ii);
+                fly2Dmaps.scan(ii).XRF = XRF_align_struct.scan(2).XRF;%circshift(XRF1,[yshifts(ii),xshifts(ii)]);
+                fly2Dmaps.scan(ii).PC =  circshift(PC1, [XRF_align_struct.scan(2).yshifts,XRF_align_struct.scan(2).xshifts]);
+                fly2Dmaps.scan(ii).indexMap = XRF_align_struct.scan(2).indexMap;%xshifts(ii);
+                fly2Dmaps.scan(ii).xshift = XRF_align_struct.scan(2).xshifts;%xshifts(ii);
+                fly2Dmaps.scan(ii).yshift = XRF_align_struct.scan(2).yshifts;%yshifts(ii);
                 fly2Dmaps.scan(ii).theta = thetalist(ii);
-                ccdnums = circshift(dataout(:,:,8),[xshifts(ii),yshifts(ii)]);
-                tempints = circshift(dataout(:,:,5),[xshifts(ii),yshifts(ii)]);
+                fly2Dmaps.scan(ii).imgsout = imgsout;
+               
                 
-                if p.Results.do_padding == 0
-                    for kk = 1:size(dataout,1)
-                        for ll = 1:size(dataout,2)
-                            fly2Dmaps.ii(kk).jj(ll).im = fly2Dmaps.ii(kk).jj(ll).im + double(imgsout(:,:,ccdnums(kk,ll)))./(numel(scanid));
-                            fly2Dmaps.ii(kk).jj(ll).intensity(ii) = tempints(kk,ll);
-                            fly2Dmaps.ii(kk).jj(ll).SumInt = fly2Dmaps.ii(kk).jj(ll).SumInt+tempints(kk,ll);
-                        end
-                    end
-                else
-                    for kk = 1:size(dataout,1)
-                        for ll = 1:size(dataout,2)
-                            
+                ccdnums = circshift(dataout(:,:,6),[XRF_align_struct.scan(2).yshifts,XRF_align_struct.scan(2).xshifts]);
+                tempints = circshift(dataout(:,:,5),[XRF_align_struct.scan(2).yshifts,XRF_align_struct.scan(2).xshifts]);
+                
+                for kk = 1:size(dataout,1)
+                    for ll = 1:size(dataout,2)
+                        %if p.Results.do_padding == 0
                             if ccdnums(kk,ll) == 0
                                 fly2Dmaps.ii(kk).jj(ll).im = 0.0;
                             else
                                 fly2Dmaps.ii(kk).jj(ll).im = fly2Dmaps.ii(kk).jj(ll).im + double(imgsout(:,:,ccdnums(kk,ll)))./(numel(scanid));
                             end
-                            fly2Dmaps.ii(kk).jj(ll).intensity(ii) = tempints(kk,ll);
-                            fly2Dmaps.ii(kk).jj(ll).SumInt = fly2Dmaps.ii(kk).jj(ll).SumInt+tempints(kk,ll);
-                        end
+                       % end
+                        fly2Dmaps.ii(kk).jj(ll).intensity(ii) = tempints(kk,ll);
+                        fly2Dmaps.ii(kk).jj(ll).SumInt = fly2Dmaps.ii(kk).jj(ll).SumInt+tempints(kk,ll);
                     end
-                    
                 end
                 
-                
-               
-                XRF0=XRF1;
-                %pause(1);
-                
+            
                 if not(p.Results.plotflag)
-                    ND_display_data.display2Dmap(XRF1,'figNum',3,'figTitle',['Unshifted Theta: ' num2str(thetalist(ii))]);
-                    ND_display_data.display2Dmap(circshift(XRF1,[xshifts(ii),yshifts(ii)]),'figNum',2,'figTitle',['Theta: ' num2str(thetalist(ii)) ' x shift: ' num2str(yshifts(ii)) ' y shift: ' num2str(xshifts(ii))]);
+                    ND_display_data.display2Dmap(XRF0,'figNum',2,'figTitle',['XRF0: ' num2str(thetalist(ii))]);
+                    ND_display_data.display2Dmap(circshift(XRF1,[fly2Dmaps.scan(ii).yshift,fly2Dmaps.scan(ii).xshift]),'figNum',3,'figTitle',['Theta: ' num2str(thetalist(ii)) ' row shift: ' num2str(fly2Dmaps.scan(ii).yshift) ' col shift: ' num2str(fly2Dmaps.scan(ii).xshift)]);
                 end
                 
             end
-            %{
-            %      Creating package to pass to click...
-            %     pass2click.fly2dscanlist = fly2Dscanlist;
-            %     pass2click.txtfilepath = '/GPFS/XF03ID1/users/2017Q2/Hruszkewycz_2017Q2/Data';
-            %    clear pass2click;
-            pass2click.fly2Dmaps = fly2Dmaps;
-            %     pass2click.imrows = outerpts;
-            %     pass2click.imcols = innerpts;
-            %}
-            
-            tempim = zeros(size(dataout,1),size(dataout,2));
-            tempxcen = zeros(size(dataout,1),size(dataout,2));
-            tempycen = zeros(size(dataout,1),size(dataout,2));
-            
-            for kk = 1:size(dataout,1)
-                for ll = 1:size(dataout,2)
-                    tempim(kk,ll) = fly2Dmaps.ii(kk).jj(ll).SumInt;
-                    imgin =fly2Dmaps.ii(kk).jj(ll).im;
-                    
-                    line1=sum(imgin,1);  % vertical
-                    line2=sum(imgin,2);  % horizontal
-                    sumt = sum(sum(imgin));
-                    for mm=1:size(line1,2)
-                        tempycen(kk,ll)=tempycen(kk,ll)+mm*line1(mm)/sumt;
-                    end
-                    for mm=1:size(line2,1)
-                        tempxcen(kk,ll)=tempxcen(kk,ll)+mm*line2(mm)/sumt;
-                    end
-                    
-                end
-            end
-            
-            fly2Dmaps.Xcentroids = tempxcen;
-            fly2Dmaps.Ycentroids = tempycen;
-
-
+           
+         
             fly2Dmaps.imapx = dataout(1,:,3);
             fly2Dmaps.imapy = dataout(:,1,2);
-            imapx = dataout(1,:,3);
-            imapy = dataout(:,1,2);
-            sumim = tempim;
+            %imapx = dataout(1,:,3);
+            %imapy = dataout(:,1,2);
+            %sumim = tempim;
             
-            if not(p.Results.plotflag)
-                ND_display_data.display2Dmap(XRF0,'figNum',1,'figTitle',['Theta: ' num2str(thetalist(1))]);
-                hfig =  ND_display_data.display2Dmap_toclick(tempim,'figNum',20,'Xval',imapx,'Yval',imapy,'figTitle','Sum Int.');
-                ND_display_data.display2Dmap(tempxcen,'figNum',22,'Xval',imapx,'Yval',imapy,'figTitle','Row Centroids');
-                ND_display_data.display2Dmap(tempycen,'figNum',23,'Xval',imapx,'Yval',imapy,'figTitle',['Column Centroids ']);
+           
+        end
+        
+        function [ fly2Dmaps] = ThetaScan_film_onlyread(datapath, scanid, detchan,varargin)
+            
+            p = inputParser;
+            
+            
+            addRequired(p,'datapath', @ischar);
+            addRequired(p,'scanid');
+            addRequired(p,'detchan', @ischar);
+            addParameter(p,'use_fitXRF',0,@isnumeric);
+            addParameter(p,'thetalist',[]);
+            addParameter(p,'MonChan','sclr1_ch3',@ischar);
+            addParameter(p,'XBICchan','sclr1_ch3',@ischar);
+            addParameter(p,'prefix',{'seq','Det','alive','dead','elapsed_time','scaler_alive','sclr','time','xspress','zpss'},@iscell);
+            addParameter(p,'showmerlin', 1, @isnumeric);
+            addParameter(p,'plotflag', 0, @isnumeric);
+            addParameter(p,'inneraxis', 'z', @ischar);
+            addParameter(p,'flyscan', 1, @isnumeric);
+            addParameter(p,'domedian', 1, @isnumeric);
+            addParameter(p,'ROIinteg', [], @isnumeric);
+            addParameter(p,'hotpixels', [], @isnumeric);
+            addParameter(p,'innerpts', 0, @isnumeric);
+            addParameter(p,'outerpts', 0, @isnumeric);
+            addParameter(p,'do_align', 0, @isnumeric);
+            addParameter(p,'do_Ref_XRF0', 0, @isnumeric);
+            addParameter(p,'do_padding', 0, @isnumeric);
+            addParameter(p,'outerpts_zeropad',0,@isnumeric);
+            addParameter(p,'innerpts_zeropad',0,@isnumeric);
+            parse(p,datapath,scanid,detchan,varargin{:});
+            
+            %read the inputs:
+            %             flag_struct.showmerlin   = p.Results.showmerlin;
+            %             flag_struct.flyscan      = p.Results.flyscan;
+            %             flag_struct.domedian     = p.Results.domedian;
+            %             flag_struct.do_centroids = p.Results.do_centroids;
+            
+            thetalist = p.Results.thetalist;
+            inneraxis = p.Results.inneraxis;
+            ROIinteg  = p.Results.ROIinteg;
+            hotpixels = p.Results.hotpixels;
+            detchan  = p.Results.detchan;
+            MonChan = p.Results.MonChan;
+            prefix = p.Results.prefix;
+            XBICchan = p.Results.XBICchan;
+            
+            pResults = p.Results;
+            
+            
+            
+            
+            if isempty(thetalist)
+                thetalist = 76.350+0.05*((1:numel(scanid))-1);
+                %thetalist = 76.5+0.1*((1:numel(fly2Dscanlist))-1);
             end
-       
             
+            
+            for ii=1:numel(scanid)
+                
+                
+                [dataout,imgsout] = ND_read_data.loadscan_HXN(datapath,scanid(ii),detchan,'prefix',prefix,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'innerpts_zeropad',p.Results.innerpts_zeropad,'outerpts_zeropad',p.Results.outerpts_zeropad,'showmerlin',p.Results.showmerlin,'do_padding',p.Results.do_padding,'use_fitXRF',p.Results.use_fitXRF);
+                [datatrash] = ND_read_data.loadscan_HXN(datapath,scanid(ii), XBICchan,'prefix',prefix,'innerpts',p.Results.innerpts,'outerpts',p.Results.outerpts,'innerpts_zeropad',p.Results.innerpts_zeropad,'outerpts_zeropad',p.Results.outerpts_zeropad,'showmerlin',p.Results.showmerlin,'do_padding',p.Results.do_padding,'use_fitXRF',0); %% reads out the photo current;
+                
+                
+                XRF1= dataout(:,:,1);%./dataout(:,:,4); %normalize by monitor
+                PC1 = datatrash(:,:,1);%./datatrash(:,:,4); %photo current normalized by monitor;
+                
+                
+                fly2Dmaps.scan(ii).XRF = dataout(:,:,1);%./dataout(:,:,4); %normalize by monitor
+                fly2Dmaps.scan(ii).PC  = datatrash(:,:,1);%./datatrash(:,:,4); %photo current normalized by monitor;
+                
+                fly2Dmaps.scan(ii).theta = thetalist(ii);
+                fly2Dmaps.scan(ii).imgsout = imgsout;
+                fly2Dmaps.scan(ii).dataout = dataout;
+                
+                
+            end
+            
+            
+            fly2Dmaps.imapx = dataout(1,:,3);
+            fly2Dmaps.imapy = dataout(:,1,2);
+            %imapx = dataout(1,:,3);
+            %imapy = dataout(:,1,2);
+            %sumim = tempim;
             
             
         end
    
+        
+        function [ccd_to_plot,sum_ccd] = readCCD_oneScan_onepixel(datapath,scanid,innerpts,pixel)
+            
+            
+            for kk = 1:numel(scanid)
+                merlimgs = h5read([datapath '/scan_' num2str(scanid(kk)) '.h5'],'/entry/instrument/detector/data');
+                merlimgs = permute(merlimgs,[2 1 3]);
+                num_ccd = (pixel(1)-1)*innerpts+pixel(2);
+                
+                ccd_to_plot(kk).ccd = merlimgs(:,:, num_ccd );
+            end
+            
+            sum_ccd = zeros(size(merlimgs(:,:,num_ccd)));
+            
+            for kk = 1:numel(scanid)
+               sum_ccd = sum_ccd +  double(ccd_to_plot(kk).ccd);
+            end
+            
+           
+            
+        end
+     
        
         function [scan,variable_names_cell] = importfile(filename, startRow, endRow,varargin)
             

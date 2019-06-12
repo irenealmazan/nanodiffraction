@@ -1,85 +1,108 @@
 classdef ND_analysis
     % This library contains all the functions to analyse the
-    % nanodiffraction pattern
+    % nanodiffraction pattern in order to extract the strain and the tilt
+    % maps
     properties(Constant)
     end
     
     
     methods(Static)
-        
-        
-        function diff_data = computeCentroidsfromDet(merlimgs,ROIinteg)
-           
-            numimgs = size(merlimgs,3);
-            diff_data = zeros(numimgs,4);
+   
+        function [centroid_struct,pixel_show] = computeCentroidsRockCurve(fly2Dmaps,varargin)
+            % this funtion computes the centroid for each pixel of a rocking curve
+            % (over many angles)
             
-            for ii = 1:size(merlimgs,3)
             
-                ccd = merlimgs(:,:,ii);
-                
-                diff_data(ii,1) = sum(sum(ccd));
-                
-                if(~isempty(ROIinteg))
-                    diff_data(ii,4) = sum(sum(ccd(ROIinteg(1):ROIinteg(2), ROIinteg(3):ROIinteg(4))));
-                end
-                
-               
-                    line1=sum(ccd,1);  % vertical
-                    line2=sum(ccd,2);  % horizontal
-                    for kk=1:size(line1,2)
-                        diff_data(ii,2)=diff_data(ii,2)+kk*line1(kk)/diff_data(ii,1);
-                    end
-                    for kk=1:size(line2,1)
-                        diff_data(ii,3)=diff_data(ii,3)+kk*line2(kk)/diff_data(ii,1);
-                    end
-                
+            p = inputParser;
+            
+            addRequired(p,'fly2Dmaps',@isstruct)
+            addParameter(p,'mask',[],@ismatrix)
+            addParameter(p,'thetalist',[],@isnumeric)
+            addParameter(p,'do_plot',0,@isnumeric)
+            addParameter(p,'show_pixel_index',[],@isnumeric)
+            
+            parse(p,fly2Dmaps,varargin{:})
+            
+            fly2Dmaps = p.Results.fly2Dmaps;
+            mask = p.Results.mask;
+            
+            if isempty(mask)
+                mask = ones(numel(fly2Dmaps.ii),numel(fly2Dmaps.ii(1).jj));
             end
-        end
-        
-        
-        function fly2Dmaps = computeCentroids_rockCurve(fly2Dmaps)
-           
+            
+            if isempty(p.Results.thetalist)
+               for ii = 1:numel(fly2Dmaps.scan)
+                  thetalist(ii) = fly2Dmaps.scan(ii).theta; 
+               end
+            else
+                thetalist = p.Results.thetalist;
+            end
+            
             tempim = zeros(numel(fly2Dmaps.ii),numel(fly2Dmaps.ii(1).jj));
             tempxcen = zeros(numel(fly2Dmaps.ii),numel(fly2Dmaps.ii(1).jj));
             tempycen = zeros(numel(fly2Dmaps.ii),numel(fly2Dmaps.ii(1).jj));
+            tempthcen = zeros(numel(fly2Dmaps.ii),numel(fly2Dmaps.ii(1).jj));
             
             for kk = 1:numel(fly2Dmaps.ii)
                 for ll = 1:numel(fly2Dmaps.ii(1).jj)
-                    tempim(kk,ll) = fly2Dmaps.ii(kk).jj(ll).SumInt;
-                    imgin =fly2Dmaps.ii(kk).jj(ll).im;
-                    
-                    line1=sum(imgin,1);  % vertical
-                    line2=sum(imgin,2);  % horizontal
-                    sumt = sum(sum(imgin));
-                    
-                    if fly2Dmaps.mask_rock(kk,ll) == 1
-                        if fly2Dmaps.mask(kk,ll) == 1
-                            if sumt==0
-                                tempycen(kk,ll)= 0;
-                                tempxcen(kk,ll)= 0;
-                            else
-                                
-                                for mm=1:size(line1,2)
-                                    tempycen(kk,ll)=tempycen(kk,ll)+mm*line1(mm)/sumt;
-                                end
-                                for mm=1:size(line2,1)
-                                    tempxcen(kk,ll)=tempxcen(kk,ll)+mm*line2(mm)/sumt;
+                    if mask(kk,ll) == 1
+                        tempim(kk,ll) = fly2Dmaps.ii(kk).jj(ll).SumInt; %sum_angle sum(sum(ccd))
+                        imgin =fly2Dmaps.ii(kk).jj(ll).im; %sum_angle ccd_angle -> 512 x 512 image
+                        imgin_theta = squeeze(fly2Dmaps.ii(kk).jj(ll).intensity); % sum(sum(ccd))_angle -> array with number of angles in rock curve entries
+                        
+                        % vertical
+                        line1=sum(imgin,1);  
+                        sumt1 = sum(line1);
+                        
+                        for mm=1:size(line1,2)
+                            tempycen(kk,ll)=tempycen(kk,ll)+mm*line1(mm)/ sumt1 ;
+                        end
+                        
+                        % horizontal
+                        line2=sum(imgin,2);  
+                        sumt2 = sum(line2);
+                        for mm=1:size(line2,1)
+                            tempxcen(kk,ll)=tempxcen(kk,ll)+mm*line2(mm)/sumt2;
+                        end
+                        
+                        sumt = sum(imgin_theta);
+                        for tt = 1:size(imgin_theta,2)
+                            tempthcen(kk,ll) = tempthcen(kk,ll) + thetalist(tt)*imgin_theta(tt)/sumt;
+                        end
+                        
+                        if ~isempty(p.Results.show_pixel_index)
+                            if kk == p.Results.show_pixel_index(1)
+                                if ll ==  p.Results.show_pixel_index(2)
+                                    pixel_show.line1 = line1/sumt1;
+                                    pixel_show.line2 = line2/sumt2;
                                 end
                             end
+                        else
+                            pixel_show.line1 = 0;
+                            pixel_show.line2 = 0;
                         end
+                    else
+                       pixel_show.line1 = 0;
+                       pixel_show.line2 = 0; 
                     end
-                    
                 end
             end
             
-            fly2Dmaps.Xcentroids = tempxcen;
-            fly2Dmaps.Ycentroids = tempycen;
-
+          
+            
+            centroid_struct.Xcentroids = tempxcen; % pixel units
+            centroid_struct.Ycentroids = tempycen;
+            centroid_struct.Thcentroids = tempthcen;
+            
+            if p.Results.do_plot
+                ND_display_data.display2Dmap(centroid_struct.Xcentroids,'figNum',22,'Xval',fly2Dmaps.xsuperGrid_s(1,:),'Yval',fly2Dmaps.ysuperGrid_s(:,1),'figTitle','Row Centroids');
+                ND_display_data.display2Dmap(centroid_struct.Ycentroids,'figNum',23,'Xval',fly2Dmaps.imapx,'Yval',fly2Dmaps.imapy,'figTitle',['Column Centroids ']);
+                ND_display_data.display2Dmap(centroid_struct.Thcentroids,'figNum',24,'Xval',fly2Dmaps.imapx,'Yval',fly2Dmaps.imapy,'figTitle',['Theta Centroids ']);
+            end
+            
         end
         
-        
-        
-        function [struct_centroidShift] = computeCentroidShift(dat1,ROIxstart,ROIxsize,ROIystart,ROIysize,plotflag)
+        function [struct_centroidShift,angles] = computeCentroidShiftAndStrain(fly2Dmaps,twoTheta,del,gam,detdist,ROIxstart,ROIxsize,ROIystart,ROIysize,fig_position,plotflag)
             
             eval('Init_parameters');
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -94,168 +117,161 @@ classdef ND_analysis
             detectorCenter = [ 1 1 ] * ( Ndet/2 );
             ROIOffset = ROICenter - detectorCenter;
             
+            kb = 2*pi*Ekev/12.39842; % beam momentum 1/A
+            lam_A = 2*pi/kb;
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
             
             %%
             %%{
             %CIGS_diffraction_detector;
-            angles = ND_analysis.qmatrix_MAR(Ekev,del,gam,0,0,detdist/100,Ndet,pixsize,0);
+            angles = ND_analysis.qmatrix_MAR(Ekev,del,gam,0,0,detdist,Ndet,pixsize,0);
             
-            strain_D = angles(:,:,1);
-            tilt_D = angles(:,:,2);
-            ROI_radial = strain_D(ROIystart:ROIystart+ROIysize-1,ROIxstart:ROIxstart+ROIxsize-1);
-            ROI_azi = tilt_D(ROIystart:ROIystart+ROIysize-1,ROIxstart:ROIxstart+ROIxsize-1);
+            radial_D = angles.anglemat(:,:,1);
+            azi_D = angles.anglemat(:,:,2);
             
             
-            xcen = round(dat1.Xcentroids(:));
-            ycen = round(dat1.Ycentroids(:));
+            ROI_radial = radial_D(ROIystart:ROIystart+ROIysize-1,ROIxstart:ROIxstart+ROIxsize-1);
+            ROI_azi = azi_D(ROIystart:ROIystart+ROIysize-1,ROIxstart:ROIxstart+ROIxsize-1);
+           
+            % in 1/A
+            ROI_qmat.qmat_1 = angles.qmat(ROIystart:ROIystart+ROIysize-1,ROIxstart:ROIxstart+ROIxsize-1,1); % recip_x component
+            ROI_qmat.qmat_2 = angles.qmat(ROIystart:ROIystart+ROIysize-1,ROIxstart:ROIxstart+ROIxsize-1,2); % recip_y component
+            ROI_qmat.qmat_3 = angles.qmat(ROIystart:ROIystart+ROIysize-1,ROIxstart:ROIxstart+ROIxsize-1,3); % recip_z component
+            ROI_qmat.qmat_4 = angles.qmat(ROIystart:ROIystart+ROIysize-1,ROIxstart:ROIxstart+ROIxsize-1,4); % magnitude
+            
+            xcen = round(fly2Dmaps.Xcentroids(:));
+            ycen = round(fly2Dmaps.Ycentroids(:));
+            thcen = twoTheta - fly2Dmaps.Thcentroids(:);
+            
             radial_proj = zeros(size(xcen));
             azi_proj = zeros(size(xcen));
+            theta_proj = zeros(size(thcen));
+            mask = fly2Dmaps.mask(:);%zeros(size(xcen));
             
             meanval_x = [];  %calculate the mean centroid value, excluding fluo
             meanval_y = [];
-            XRFtemp = dat1.scan(1).XRF(:).*dat1.mask(:).*dat1.mask_rock(:);
-            mask_array = dat1.mask(:).*dat1.mask_rock(:);
-            minXRF = max(XRFtemp)*0.1;
+            meanval_theta_proj = [];
+            
             for ii = 1:numel(xcen)
-                if xcen(ii) ~=0
-                        radial_proj(ii) = ROI_radial(ycen(ii),xcen(ii));
-                        azi_proj(ii) = ROI_azi(ycen(ii),xcen(ii));
-                        
-                        if dat1.mask(ii)
+                if  mask (ii) == 1;%xcen(ii) ~=0 && isnan(xcen(ii)) == 0 && ycen(ii) ~=0 && isnan(ycen(ii)) == 0
+                    %mask(ii) = 1;
+                    
+                    radial_proj(ii) = ROI_radial(ycen(ii),xcen(ii)); % radial component
+                    azi_proj(ii) = ROI_azi(ycen(ii),xcen(ii));% azimutal component           
+                    theta_proj(ii) = thcen(ii);
+                    
+                    %if fly2Dmaps.mask(ii)
                         %if XRFtemp(ii)>minXRF
-                            meanval_x = [meanval_x, radial_proj(ii)];
-                            meanval_y = [meanval_y, azi_proj(ii)];
-                        end
+                        meanval_x = [meanval_x, radial_proj(ii)];
+                        meanval_y = [meanval_y, azi_proj(ii)];
+                        meanval_theta_proj = [meanval_theta_proj, theta_proj(ii)];
+                   % end
                 end
+                
             end
+            
             
             meanval_radial = mean(meanval_x);
             meanval_azi = mean(meanval_y);
+            meanval_theta = mean(meanval_theta_proj);
+                        
+            radial_proj = reshape(radial_proj,size(fly2Dmaps.Xcentroids) );
+            azi_proj = reshape(azi_proj, size(fly2Dmaps.Xcentroids));
+            theta_proj = reshape(theta_proj, size(fly2Dmaps.Xcentroids));
+            mask = reshape(mask, size(fly2Dmaps.Xcentroids));
+            xcen = reshape(xcen, size(fly2Dmaps.Xcentroids));%reshape(xcen, size(fly2Dmaps.Xcentroids));
+            ycen = reshape(ycen, size(fly2Dmaps.Xcentroids));
+            thcen = reshape(thcen, size(fly2Dmaps.Xcentroids));
+            meanval_radial_matrix = meanval_radial .*ones(size(fly2Dmaps.Xcentroids) );
             
-        
-            
-            radial_proj = reshape(radial_proj, size(dat1.Xcentroids));
-            azi_proj = reshape(azi_proj, size(dat1.Xcentroids));
-            xcen = reshape(xcen, size(dat1.Xcentroids));
-            ycen = reshape(ycen, size(dat1.Xcentroids));
             
             
-          
+   
+            dspace_mean = lam_A./(2*sind( meanval_radial_matrix/2));
+            dspace_strain = lam_A./(2*sind((radial_proj)/2));
             
-            %{
-figure(1); clf; imagesc(radial_proj); axis image; colorbar; title('radial projected centroid');
-figure(2); clf; imagesc(azi_proj); axis image; colorbar; title('tangential projected centroid');
-            %}
-            dspace = lam/(2*sind(meanval_radial/2));
+            strain = (dspace_strain-dspace_mean)./dspace_mean;
             
             tilt = azi_proj - meanval_azi;
-            %strain = -cotd(meanval_radial/2).*(meanval_radial- radial_proj)/2;
-            strain = -cotd(meanval_radial/2).*(-meanval_radial+radial_proj)/2;
+            delta_theta_proj = theta_proj -   meanval_theta ;
+            tilt_tot = sqrt( tilt.^2 + delta_theta_proj.^2);
+            
             
             struct_centroidShift.angles = angles;
-            struct_centroidShift.dspace = dspace;
-            struct_centroidShift.tilt = tilt;
+            struct_centroidShift.dspace = dspace_strain;
+            struct_centroidShift.tilt_x = tilt;
+            struct_centroidShift.tilt_y = delta_theta_proj;
+            struct_centroidShift.tilt_tot = tilt_tot;
             struct_centroidShift.strain = strain;
             struct_centroidShift.radial_proj = radial_proj;
             struct_centroidShift.azi_proj = azi_proj;
+            struct_centroidShift.theta_proj = theta_proj;
             struct_centroidShift.xcen = xcen;
             struct_centroidShift.ycen = ycen;
+            struct_centroidShift.thcen = thcen;
+            struct_centroidShift.meanval_radial = meanval_radial;
             
             %%{
             if plotflag
                 
-                ND_display_data.display2Dmap(radial_proj,'figNum',1,'figTitle','radial projected centroid');
-                ND_display_data.display2Dmap(azi_proj,'figNum',1,'figTitle','tangential projected centroid');
+             
+                figure(7); clf; imagesc(fly2Dmaps.imapx(1,:),fly2Dmaps.imapy(:,1),strain.*mask); colorbar; title('strain');axis image;
+                set(gcf,'Position',fig_position);
+                figure(8); clf; imagesc(fly2Dmaps.imapx(1,:),fly2Dmaps.imapy(:,1),tilt.*mask); colorbar; title('tilt around x');axis image;
+                set(gcf,'Position',fig_position);
+                figure(9); clf; imagesc(fly2Dmaps.imapx(1,:),fly2Dmaps.imapy(:,1),delta_theta_proj.*mask); colorbar; title('tilt around y');axis image;
+                set(gcf,'Position',fig_position);
+                figure(10); clf; imagesc(fly2Dmaps.imapx(1,:),fly2Dmaps.imapy(:,1),tilt_tot.*mask); colorbar; title('tilt total');axis image;
+                set(gcf,'Position',fig_position);
+                
+                figure(11);clf;imagesc(ROI_radial);axis image;title('Radial component in ccd');colorbar;colormap jet;
+                figure(12);clf;imagesc(ROI_azi);axis image;title('Azhimutal component in ccd');colorbar;colormap jet;
+            end
+            %}
+            
+        end
+        
+        function [distr_struct,mask_struct] = computeStrainOrTiltContours(dat,struct_centroidShift,field,contour_values_up,contour_values_down)
+            
+            map2D_SumInt = dat.map2D_SumInt.*dat.mask;
+            dat.map2D_SumInt = map2D_SumInt;
+            for kk = 1:numel(contour_values_up)
+                [mask_struct(kk).mask_up] = ND_data_processing.calculateMask(dat,contour_values_up(kk));
+                [mask_struct(kk).mask_down] = ND_data_processing.calculateMask(dat,contour_values_down(kk));
 
-                %{
-                figure(3); clf;
-                subplot(3,1,1); s=imagesc(dat1.xaxis(1,:),dat1.yaxis(:,1),strain.*msk); axis image; colorbar; title('strain');
-                subplot(3,1,2); imagesc(dat1.xaxis(1,:),dat1.yaxis(:,1),tilt.*msk); axis image; colorbar; title('tilt');
-                tmp  = dat1.scan(1).PC;
-                subplot(3,1,3); p3=imagesc(dat1.xaxis(1,:),dat1.yaxis(:,1),dat1.scan(2).PC.*msk); axis image; colorbar; title('photocurrent'); caxis([.8*median(tmp(:)) 1.2*median(tmp(:))])
+                mask_ring = zeros(size(mask_struct(kk).mask_up));
+                mask_ring (mask_struct(kk).mask_down>0) = 1;
+                mask_ring(mask_struct(kk).mask_up>0) = 0; 
                 
-                alpha(p3,0.5)
-                %}
-                figure(1); clf; imagesc(dat1.xaxis(1,:),dat1.yaxis(:,1),xcen); colorbar; title('xcen');axis image;
-                figure(2); clf; imagesc(dat1.xaxis(1,:),dat1.yaxis(:,1),ycen); colorbar; title('ycen');axis image;
-                figure(3); clf; imagesc(dat1.xaxis(1,:),dat1.yaxis(:,1),radial_proj); colorbar; title('radial cen');axis image;
-                figure(4); clf; imagesc(dat1.xaxis(1,:),dat1.yaxis(:,1),azi_proj); colorbar; title('tangential cen');axis image;
-                figure(5); clf; imagesc(strain); colorbar; title('strain-v2');axis image;
-                figure(6); clf; imagesc(tilt); colorbar; title('tilt-v2');axis image;
-         
+                mask_struct(kk).mask = mask_ring;
+                
+                distrib = struct_centroidShift.(field).*mask_ring;
+               
+                weight = mask_ring.*map2D_SumInt./sum(sum(map2D_SumInt.*mask_ring));
+                
+                distrib_weight = struct_centroidShift.(field).*mask_ring.*map2D_SumInt./sum(sum(map2D_SumInt.*mask_ring));
+                
+                sigma(kk) = std(distrib(:),weight(:),'omitnan');
+                
+                median_field(kk) = sum(sum(distrib_weight,'omitnan'),'omitnan');%/sum(sum(dat.map2D_SumInt.*mask_ring));
+               
+                distr_struct.hist(kk).distrib = distrib;
+                distr_struct.hist(kk).distrib_weight = distrib_weight;
+                distr_struct.hist(kk).weight = weight;
+                %strain_weight = struct_centroidShift.strain.*mask_struct(kk).mask.*dat.map2D_SumInt;
+                %distr_struct.strain(kk) = sum(sum(strain_weight,'omitnan'),'omitnan')/sum(sum(dat.map2D_SumInt.*mask_struct(kk).mask));
             end
-            %}
             
-        end
-        
-        function [strain_struct] = calculateStrain(dat1,ROIxstart,ROIxsize,ROIystart,ROIysize,plotflag)
-            % Convert to strain
-            eval('Init_parameters');
-            
-            
-            ROICenter = [ ...
-                ROIxstart + ROIxsize / 2 ...
-                Ndet - ( ROIystart + ROIysize / 2 ) ...
-                ];
-            
-            detectorCenter = [ 1 1 ] * ( Ndet/2 );
-            ROIOffset = ROICenter - detectorCenter;
-            
-            a = detdist * kf;
-            b = detdist * cosd( twoTheta ) * ki;
-            x_strain = b - a;
-            x_strain = x_strain / norm( x_strain );
-            
-            R = [ ...
-                0 -1 0 ; ...
-                1 0 0 ; ...
-                0 0 1 ];
-            x_tilt = R * x_strain;
-            trans = [ x_strain x_tilt ];
-            
-            XcentroidsCorrected = ROIOffset(1) + dat1.Xcentroids;
-            YcentroidsCorrected = ROIOffset(2) + dat1.Ycentroids;
-            
-            
-            centroids = ( ROIOffset(1) + dat1.Xcentroids(:) ) * [ 1 0 0 ] + ( ROIOffset(2) + dat1.Ycentroids(:) ) * [ 0 1 0 ];
-            centroidsTransformed = centroids * trans;
-            
-            centroids_strain = reshape(centroidsTransformed(:,1),size(dat1.Xcentroids));
-            centroids_tilt = reshape(centroidsTransformed(:,2),size(dat1.Ycentroids));
-            
-            tilt = centroids_tilt.*degperpix;
-            
-            strain = centroids_strain.*degperpix;
-            rel_th = mean(strain(:));
-            strain = -cotd(twoTheta/2).*(rel_th - strain);
-            
-            strain_struct.strain = strain;
-            strain_struct.rel_th = rel_th;
-            strain_struct.tilt = tilt;
-            strain_struct.XcentroidsCorrected = XcentroidsCorrected;
-            strain_struct.YcentroidsCorrected = YcentroidsCorrected;
-            %}
-            %%{
-            %ROI_radial = Angs_radial(ROIystart:ROIystart+ROIysize-1,ROIxstart:ROIxstart+ROIxsize-1);
-            %ROI_azi = Angs_azi(ROIystart:ROIystart+ROIysize-1,ROIxstart:ROIxstart+ROIxsize-1);
-            %%{
-            if plotflag
-                figure(9); s=imagesc(dat1.xaxis(1,:),dat1.yaxis(:,1),strain); colorbar; title('strain-v1');
-                figure(10); imagesc(dat1.xaxis(1,:),dat1.yaxis(:,1),tilt); colorbar; title('tilt-v1');
-                %{
-                figure(1); clf; imagesc(Angs_radial); colorbar; ca = caxis; axis image;
-                figure(2); clf; imagesc(ROI_radial); colorbar; caxis(ca); axis image;
-                figure(3); clf; imagesc(Angs_azi); colorbar; ca = caxis; axis image;
-                figure(4); clf; imagesc(ROI_azi); colorbar; caxis(ca); axis image; colormap hot;
-                %}
-            end
-            %}
+             distr_struct.distr = median_field;
+                
+             distr_struct.sigma = sigma;
             
             
         end
+       
         
-        function f = qmatrix_MAR(Ekev,Tth,Gam,xdet,ydet,Rdet, Ndet,pixsize,plotflag)
+        
+        function f_struct = qmatrix_MAR(Ekev,Tth,Gam,xdet,ydet,Rdet, Ndet,pixsize,plotflag)
             % function to create momentum transfer matrix for MAR detector
             % Rdet cylindrical, ydet vertically up, xdet horizontal in detector plane - scale in mm
             % used in finding pixel track out as a function of energy, use syntax
@@ -272,8 +288,8 @@ figure(2); clf; imagesc(azi_proj); axis image; colorbar; title('tangential proje
             %pxsz = 165/Ndet; %Pixel size MAR165 in mm
             %pxsz = 186/Ndet; %Pixel size CSPAD in mm
             %pxsz = 0.055;
-            
-            kb = 2*pi*Ekev/12.39842; % beam momentum 1/A
+             kb = 2*pi*Ekev/12.39842; % beam momentum 1/A
+          
             
             %Detector center and pixel plane vectors
             Detcen = [Rdet*sind(Tth)*cosd(Gam) Rdet*sind(Gam) Rdet*cosd(Tth)*cosd(Gam)];
@@ -309,8 +325,9 @@ figure(2); clf; imagesc(azi_proj); axis image; colorbar; title('tangential proje
             qmat(:,:,3) = kb*(kfmat(:,:,3)-1);
             qmat(:,:,4) = sqrt(qmat(:,:,1).^2+qmat(:,:,2).^2+qmat(:,:,3).^2);
             
-            anglemat(:,:,1) = acosd(kfmat(:,:,3)); % two theta
-            anglemat(:,:,2) = atand(-kfmat(:,:,2)./kfmat(:,:,1)); %eta
+            anglemat(:,:,1) = acosd(kfmat(:,:,3)); % radial
+            anglemat(:,:,2) = atand(-kfmat(:,:,2)./kfmat(:,:,1)); %azimutal
+            %anglemat(:,:,3) = 180 - acosd(qmat(:,:,4)/(2*kb)); %delta two theta
             
             %smallq(smallx,smallx,:)=qmat(smallx*qscale,smallx*qscale,:);
             
@@ -341,33 +358,68 @@ figure(2); clf; imagesc(azi_proj); axis image; colorbar; title('tangential proje
                 %    hold on;scatter3(0,0,0,400,'blue','LineWidth',5);
             end
             
-            f = anglemat;
+            f_struct.anglemat = anglemat;
+            f_struct.qmat = qmat;
+            f_struct.jvec = jvec;
+            f_struct.ivec = ivec;
+            f_struct.Detcen = Detcen;
             
         end
-       
         
-        function [mask,dat1] = calculateMask(dat1,percent)
+        function Rtest = calculateCorrCoef(dat,mask,filenames,plotflag)
             
-            mask_rock = ones(numel(dat1.ii),numel(dat1.ii(1).jj));
-            for kk = 1:numel(dat1.ii)
-                for ll = 1:numel(dat1.ii(kk).jj)
-                    map2D_SumInt(kk,ll) = dat1.ii(kk).jj(ll).SumInt;
-                    [max_val,max_rock_curve(kk,ll)] = max(dat1.ii(kk).jj(ll).intensity);
-                    
-                    if max_rock_curve(kk,ll) == numel(dat1.ii(kk).jj(ll).intensity)
-                        mask_rock(kk,ll) = 0 ;
-                    end
-                    
-                end
+            dat_align = load(filenames{1},'dat');%load(['results/data_scan_align' num2str(lst(1)) '_' num2str(lst(end)) '.mat'],'dat');
+            dat_alignXRF0 = load(filenames{2},'dat');%load(['results/data_scan_alignXRF0' num2str(lst(1)) '_' num2str(lst(end)) '.mat'],'dat');
+            dat_nonalign = load(filenames{3},'dat');;%load(['results/data_scan_nonalign' num2str(lst(1)) '_' num2str(lst(end)) '.mat'],'dat');
+            
+            dat_align.dat.thetalist = dat.thetalist;
+            dat_alignXRF0.dat.thetalist = dat.thetalist;
+            dat_nonalign.dat.thetalist = dat.thetalist;
+            
+            [centroid_struct_align] = ND_analysis.computeCentroidsRockCurve(dat_align.dat,'mask',mask,'do_plot',0);
+            [centroid_struct_alignXRF0] = ND_analysis.computeCentroidsRockCurve(dat_alignXRF0.dat,'mask',mask,'do_plot',0);
+            [centroid_struct_nonalign] = ND_analysis.computeCentroidsRockCurve(dat_nonalign.dat,'mask',mask,'do_plot',0);
+            
+            Xcentroids_corr(:,1) = centroid_struct_align.Xcentroids(:);
+            Xcentroids_corr(:,2) = centroid_struct_alignXRF0.Xcentroids(:);
+            Xcentroids_corr(:,3) = centroid_struct_nonalign.Xcentroids(:);
+            
+            Rtest.Xcentroids_corrcoef = corrcoef(Xcentroids_corr,'rows','pairwise');
+            
+            Ycentroids_corr(:,1) = centroid_struct_align.Ycentroids(:);
+            Ycentroids_corr(:,2) = centroid_struct_alignXRF0.Ycentroids(:);
+            Ycentroids_corr(:,3) = centroid_struct_nonalign.Ycentroids(:);
+            
+            Rtest.Ycentroids_corrcoef = corrcoef(Ycentroids_corr,'rows','pairwise');
+            
+            Thcentroids_corr(:,1) = centroid_struct_align.Thcentroids(:);
+            Thcentroids_corr(:,2) = centroid_struct_alignXRF0.Thcentroids(:);
+            Thcentroids_corr(:,3) = centroid_struct_nonalign.Thcentroids(:);
+            
+            Rtest.Thcentroids_corrcoef = corrcoef(Thcentroids_corr,'rows','pairwise');
+            
+            if plotflag
+                
+                figure(1);
+                imagesc(Rtest.Xcentroids_corrcoef);
+                colorbar;
+                axis square;
+                title('Correlation coefficients for Ycentroids')
+                
+                figure(2);
+                imagesc(Rtest.Ycentroids_corrcoef);
+                colorbar;
+                axis square;
+                title('Correlation coefficients for Ycentroids');
+               
+                figure(3);
+                imagesc(Rtest.Thcentroids_corrcoef);
+                colorbar;
+                axis square;
+                title('Correlation coefficients for Thcentroids')
+                
             end
             
-            % mask for intensities
-            mask = map2D_SumInt > percent*max(max(map2D_SumInt));
-            
-            % mask for rocking curve
-            
-            dat1.mask = mask;
-            dat1.mask_rock = mask_rock;
         end
         
     end
