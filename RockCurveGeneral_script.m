@@ -2,9 +2,9 @@
 % using the fluorescence map, displays the rocking curve and calculates the
 % strain map
 
-if ~exist('flag_read_HXN_parameters')    
-    clear all; close all;
-end
+%if ~exist('flag_read_HXN_parameters')    
+%    clear all; close all;
+%end
 
 
 addpath(genpath('./nanodiff_functions'));
@@ -19,48 +19,23 @@ filename_toload = 'results/data_scan_onlyread_nopad';
 
 %% what are we going to do?
 flag_read_forfirsttime = 0;
-flag_make_supergrid = 1;
+flag_make_supergrid = 0;
 flag_doAlignment = 0;
 flag_analyze = 0;
-flag_display = 1;
-flag_strain_analysis = 0;
+flag_display = 0;
+flag_strain_analysis = 1;
 flag_manual_alignement = 0;
+flag_median = 0;
 
+RockCurve1_script;
+%RockCurve7_script;
+%RockCurve9_script;
+%RockCurve11_script;
+%RockCurve12_script;
 
-%% Rocking curve 1, HXN beamtimes line 135
-%%{
-lst = [45193:1:45233]; 
-th_start = 81.25;
-th_end = 83.75;
-delta_th = (th_end-th_start)/(numel(lst)-1);
-th_drift_perang = -8*delta_th; % correction for drift of maps for each angle, in microns
-
-th_step = (th_end-th_start)/(numel(lst)-1);
-angs = [th_start:th_step:th_end];
-
-del = -16.1;
-gam = 13.1;%10.65;
-twoTheta = 21.2;
-detdist = 0.35; % in meters
-
-ROIxstart = 1;%50;
-ROIystart = 132;%81;
-ROIxsize = 404;%200;
-ROIysize = 380;%200;
-
-
-
-innerpts = 40;
-outerpts = 40;
-innerpts_zeropad = 10;
-outerpts_zeropad = 10;
-
-delta_x_microns = 0.1; % step in the sample frame in microns for supergrid
-
-
-if exist('flag_read_HXN_parameters')    
-    return;    
-end
+%if exist('flag_read_HXN_parameters')    
+%    return;    
+%end
 
 
 
@@ -72,23 +47,26 @@ if use_fitXRF == 0
 else
     XRFchan = 'detsum_Cu_K_';
 end
+normchan = 'sclr1_ch4';
 XBICchan = 'sclr1_ch3';
 prefix = {'seq','Det','alive','dead','elapsed_time','scaler_alive','sclr','time','xspress','zpss'};
 
-
-
+struct_median_I0 =  load('median_I0_grain1.mat');
+median_I0 = struct_median_I0.median_I0;
 
 eval('Init_parameters');
 
+%return;
 
 
 if flag_read_forfirsttime == 1
-    [dat]=ND_read_data.ThetaScan_film_onlyread(datapath,lst,XRFchan,'XBICchan',XBICchan,'thetalist',angs,'innerpts',innerpts,'outerpts',outerpts,'innerpts_zeropad',innerpts_zeropad,'outerpts_zeropad',outerpts_zeropad,'showmerlin',0,'inneraxis',inneraxis,'do_padding',0,'do_align',0,'do_Ref_XRF0',0,'use_fitXRF',use_fitXRF);
+    [dat]=ND_read_data.ThetaScan_film_onlyread(datapath,lst,XRFchan,normchan,median_I0,'XBICchan',XBICchan,'thetalist',angs,'innerpts',innerpts,'outerpts',outerpts,'innerpts_zeropad',innerpts_zeropad,'outerpts_zeropad',outerpts_zeropad,'showmerlin',0,'inneraxis',inneraxis,'do_padding',0,'do_align',0,'do_Ref_XRF0',0,'use_fitXRF',use_fitXRF);
     save([filename '_onlyread_nopad' num2str(lst(1)) '_' num2str(lst(end)) '.mat'],'dat','-v7.3');
 else
     
     load([filename_toload num2str(lst(1)) '_' num2str(lst(end)) '.mat'],'dat');
 end
+
 
 
 %% Analisis section
@@ -103,13 +81,12 @@ if flag_make_supergrid == 1
     
     [dat] = ND_read_data.read_tiff_and_getLinearDatain2DMap(datapath,char('x_pos'),lst,dat,'donorm',0,'innerpts',innerpts,'outerpts',outerpts,'innerpts_zeropad',innerpts_zeropad,'outerpts_zeropad',outerpts_zeropad,'do_padding',0);
     [dat] = ND_read_data.read_tiff_and_getLinearDatain2DMap(datapath,char('y_pos'),lst,dat,'donorm',0,'innerpts',innerpts,'outerpts',outerpts,'innerpts_zeropad',innerpts_zeropad,'outerpts_zeropad',outerpts_zeropad,'do_padding',0);
-    [dat] = ND_read_data.read_tiff_and_getLinearDatain2DMap(datapath,char('sclr1_ch4'),lst,dat,'donorm',0,'innerpts',innerpts,'outerpts',outerpts,'innerpts_zeropad',innerpts_zeropad,'outerpts_zeropad',outerpts_zeropad,'do_padding',0);
-
+   
     [dat] = ND_data_processing.convertHXNtoSampleFrame(dat);
     
-    [dat,xsuperGrid_s,ysuperGrid_s] = ND_data_processing.makeSuperGrid(dat,'XRF',delta_x_microns,'do_zeropadding',1,'innerpts_zeropad',innerpts_zeropad,'outerpts_zeropad',outerpts_zeropad);
+    [dat] = ND_data_processing.makeSuperGrid(dat,'XRF',delta_x_microns,'do_zeropadding',1,'innerpts_zeropad',innerpts_zeropad,'outerpts_zeropad',outerpts_zeropad);
     [dat,xsuperGrid_s,ysuperGrid_s] = ND_data_processing.makeSuperGrid(dat,'PC',delta_x_microns,'do_zeropadding',1,'innerpts_zeropad',innerpts_zeropad,'outerpts_zeropad',outerpts_zeropad);
-    [dat,xsuperGrid_s,ysuperGrid_s] = ND_data_processing.makeSuperGrid(dat,'sclr1_ch4',delta_x_microns,'do_zeropadding',1,'innerpts_zeropad',innerpts_zeropad,'outerpts_zeropad',outerpts_zeropad);
+    %[dat,xsuperGrid_s,ysuperGrid_s] = ND_data_processing.makeSuperGrid(dat,'sclr1_ch4',delta_x_microns,'do_zeropadding',1,'innerpts_zeropad',innerpts_zeropad,'outerpts_zeropad',outerpts_zeropad);
 
     for ii = 1:numel(dat.scan)
         for jj = 1:size(dat.scan(1).dataout,3)
@@ -133,6 +110,18 @@ if flag_make_supergrid == 1
     
   
     
+end
+
+if flag_median == 1
+    [dat] = ND_read_data.read_tiff_and_getLinearDatain2DMap(datapath,char('sclr1_ch4'),lst,dat,'donorm',0,'innerpts',innerpts,'outerpts',outerpts,'innerpts_zeropad',innerpts_zeropad,'outerpts_zeropad',outerpts_zeropad,'do_padding',0);
+ 
+     if strcmp(Grain_label,'Grain1')
+       median_I0 = median(dat.scan(32).sclr1_ch4(:));
+       dat.median_I0 = median_I0;
+       save('median_I0_grain1.mat','median_I0');
+    else
+       dat.median_I0 =  load('median_I0_grain1.mat');
+    end
 end
 
 if flag_doAlignment == 1
@@ -171,7 +160,7 @@ if flag_analyze == 1
     dat = ND_data_processing.diffrIntenMaps(dat,XRF_aligned,'do_supergrid',1,'delta_x_microns',delta_x_microns,'do_zeropadding',1,'innerpts_zeropad',innerpts_zeropad,'outerpts_zeropad',outerpts_zeropad);
     
     
-    [mask_nan,dat] = ND_data_processing.calculateMask(dat,0.01);
+    [mask_nan,dat] = ND_data_processing.calculateMask(dat,0.05);
     
     %dat.mask_rock = mask0;
     
@@ -282,23 +271,44 @@ if flag_strain_analysis == 1
     
     
     
-    contour_values_up = [2:1:11 20:10:80]*0.01;%[0.01 0.02 0.03 0.04 0.05 0.06];%
-    contour_values_down = [1:1:10 10:10:70]*0.01;%[1:1:70]*0.01;
-    [distr_struct,mask_struct] = ND_analysis.computeStrainContours(dat,struct_centroidShift,contour_values_up,contour_values_down);
+    contour_values_up = [2:1:100]*0.01;%%[0.01 0.02 0.03 0.04 0.05 0.06];%
+    contour_values_down = [1:1:99]*0.01;%[1:1:70]*0.01;
+    [distr_struct_dspace,mask_struct] = ND_analysis.computeStrainOrTiltContours(dat,struct_centroidShift,'dspace',contour_values_up,contour_values_down);
+    distr_struct.dspace = distr_struct_dspace.distr;
+    distr_struct.dspace_sigma = distr_struct_dspace.sigma;
+     
+    [distr_struct_tilt_tot,mask_struct] = ND_analysis.computeStrainOrTiltContours(dat,struct_centroidShift,'tilt_tot',contour_values_up,contour_values_down);
+     distr_struct.tilt_tot = distr_struct_tilt_tot.distr;
+    distr_struct.tilt_tot_sigma = distr_struct_tilt_tot.sigma;
     
-    
+    [distr_struct_grad,mask_struct] = ND_analysis.computeGradTiltContours(dat,struct_centroidShift,contour_values_up,contour_values_down);
+    distr_struct.grad_tilt_tot = distr_struct_grad.distr_grad_tilt_tot;
+    distr_struct.grad_tilt_tot_sigma = distr_struct_grad.sigma_grad_tilt_tot;
     
     window_for_maps = [1,size(dat.xsuperGrid_s,1),1,size(dat.xsuperGrid_s,2)];
 
     
-    color_array = ['r','k','g','b'];
+    color_array = ['r','k','g','b','m','r','k','g','b','m','r','k','g','b','m','r','k','g','b','m'];
 
     
+    contour_min_to_plot = 5;
+    [mask_toshow,dat] = ND_data_processing.calculateMask(dat,0.08);%contour_values_down(contour_min_to_plot)
+
+    [mask_toshow_nan] = ND_data_processing.turnMaskInNan(double(mask_toshow));
+
+    
+    dat.mask_toshow_nan = mask_toshow_nan;
+    
+    
    figNum = 5000;
-    ND_display_data.display2Dmap(dat.map2D_SumInt,'Xval',dat.xsuperGrid_s(1,:),'YVal',dat.ysuperGrid_s(:,1),'window',window_for_maps,'figTitle',[' Integrated diffraction intensity'],'font',30,'size_figure',[90 151 1203 510],'figNum',figNum);
+   ND_display_data.display2Dmap(dat.map2D_SumInt.*mask_toshow_nan,'Xval',dat.xsuperGrid_s(1,:),'YVal',dat.ysuperGrid_s(:,1),'window',window_for_maps,'figTitle',[' Integrated diffraction intensity'],'font',30,'size_figure',[90 151 1203 510],'figNum',figNum);
+   caxis([min(min(dat.map2D_SumInt.*mask_toshow_nan)) max(max(dat.map2D_SumInt.*mask_toshow_nan))]);
+
+    
     index_color = 1;
 
-    for kk = 1:5:numel(mask_struct)
+    %{
+    for kk = contour_min_to_plot:15:numel(mask_struct)
          
 
         figure(figNum);  hold on;contour(dat.xsuperGrid_s(1,window_for_maps(3):window_for_maps(4)),dat.ysuperGrid_s(window_for_maps(1):window_for_maps(2),1),mask_struct(kk).mask_down(window_for_maps(1):window_for_maps(2),window_for_maps(3):window_for_maps(4)),1,'LineWidth',3.0,'Color',color_array(index_color));
@@ -310,65 +320,78 @@ if flag_strain_analysis == 1
         
         index_color = index_color + 1;
     end
-    
+    %}
     
     figNum = 6000;
-    ND_display_data.display2Dmap(struct_centroidShift.dspace,'figNum',figNum,'Xval',dat.xsuperGrid_s(1,:),'Yval',dat.ysuperGrid_s(:,1),'window',window_for_maps,'figTitle',['D space '],'font',30,'size_figure',[90 151 1203 510]);%caxis([220 250]);
+    ND_display_data.display2Dmap(struct_centroidShift.dspace.*mask_toshow_nan,'figNum',figNum,'Xval',dat.xsuperGrid_s(1,:),'Yval',dat.ysuperGrid_s(:,1),'window',window_for_maps,'figTitle',['D space '],'font',30,'size_figure',[90 151 1203 510]);%caxis([220 250]);
+   caxis([min(min(struct_centroidShift.dspace.*mask_toshow_nan)) max(max(struct_centroidShift.dspace.*mask_toshow_nan))]);
 
 
     index_color = 1;
-    
-    for kk = 1:5:numel(mask_struct)
+  
+    %{
+    for kk = contour_min_to_plot:15:numel(mask_struct)
         
        %ND_display_data.display2Dmap(struct_centroidShift.dspace.*mask_struct(kk).mask,'figNum',figNum+kk,'Xval',dat.xsuperGrid_s(1,:),'Yval',dat.ysuperGrid_s(:,1),'window',window_for_maps,'figTitle',['D space at ' num2str(contour_values(kk)) '%'],'font',30,'size_figure',[90 151 1203 510]);%caxis([220 250]);
 
         figure(figNum);  hold on;contour(dat.xsuperGrid_s(1,window_for_maps(3):window_for_maps(4)),dat.ysuperGrid_s(window_for_maps(1):window_for_maps(2),1),mask_struct(kk).mask_down(window_for_maps(1):window_for_maps(2),window_for_maps(3):window_for_maps(4)),1,'LineWidth',3.0,'Color',color_array(index_color));
         figure(figNum);  hold on;contour(dat.xsuperGrid_s(1,window_for_maps(3):window_for_maps(4)),dat.ysuperGrid_s(window_for_maps(1):window_for_maps(2),1),mask_struct(kk).mask_up(window_for_maps(1):window_for_maps(2),window_for_maps(3):window_for_maps(4)),1,'LineWidth',3.0,'Color',color_array(index_color));
 
-        caxis([3.78 3.86]);
+        %caxis([3.78 3.86]);
+        
+        index_color = index_color + 1;
+    end  
+    %}
+    
+    figNum = 7000;
+    ND_display_data.display2Dmap(gradient(struct_centroidShift.tilt_tot).*mask_toshow_nan,'figNum',figNum,'Xval',dat.xsuperGrid_s(1,:),'Yval',dat.ysuperGrid_s(:,1),'window',window_for_maps,'figTitle',['Total tilt'],'font',30,'size_figure',[90 151 1203 510]);
+    caxis([min(min(gradient(struct_centroidShift.tilt_tot).*mask_toshow_nan)) max(max(gradient(struct_centroidShift.tilt_tot).*mask_toshow_nan))]);
+
+
+    index_color = 1;
+   
+    %{
+    for kk = contour_min_to_plot:15:numel(mask_struct)
+        
+       %ND_display_data.display2Dmap(struct_centroidShift.dspace.*mask_struct(kk).mask,'figNum',figNum+kk,'Xval',dat.xsuperGrid_s(1,:),'Yval',dat.ysuperGrid_s(:,1),'window',window_for_maps,'figTitle',['D space at ' num2str(contour_values(kk)) '%'],'font',30,'size_figure',[90 151 1203 510]);%caxis([220 250]);
+
+        figure(figNum);  hold on;contour(dat.xsuperGrid_s(1,window_for_maps(3):window_for_maps(4)),dat.ysuperGrid_s(window_for_maps(1):window_for_maps(2),1),mask_struct(kk).mask_down(window_for_maps(1):window_for_maps(2),window_for_maps(3):window_for_maps(4)),1,'LineWidth',3.0,'Color',color_array(index_color));
+        figure(figNum);  hold on;contour(dat.xsuperGrid_s(1,window_for_maps(3):window_for_maps(4)),dat.ysuperGrid_s(window_for_maps(1):window_for_maps(2),1),mask_struct(kk).mask_up(window_for_maps(1):window_for_maps(2),window_for_maps(3):window_for_maps(4)),1,'LineWidth',3.0,'Color',color_array(index_color));
+
+        %caxis([3.78 3.86]);
         
         index_color = index_color + 1;
     end
+    %}
+    figNum = 8000;
     
-    
-    figure(figNum+25+kk+1);
+    figure(figNum);
     clf;
-%     subplot(121);
-%     plot(contour_values,distr_struct.strain);
-%     xlabel('% of diffracted intensity map');
-%     ylabel('strain \Delta d/d');
-%     set(gca,'FontSize',30)
-    
-    %subplot(122);
-    %plot(contour_values_down,distr_struct.dspace);
-    
-    
-    x = contour_values_down; % start of bar
-    y = zeros(length(x),1);
-    dx = diff([x 1]); % width of bar
-    dy = distr_struct.dspace;
-    
-    
-     hold on;
-    for ii=1:length(x)
-        rectangle('position',[x(ii) y(ii) dx(ii) dy(ii)])
-    end
-    
-   index_color = 1;
-
-    for ii=1:5:length(x)
-        rectangle('position',[x(ii) y(ii) dx(ii) dy(ii)],'FaceColor',color_array(index_color));
-        index_color = index_color + 1;
-    end
-    
-    %axis([0.5 2 0 4.1])
-    
-    %ylabel('Prob density')
-    %xlabel('Time')
+    subplot(131);
+    errorbar(contour_values_down,distr_struct.dspace,distr_struct.dspace_sigma)
     ylim([3.78 3.9]);
     xlabel(' bins of % of diffr. inten.');
     ylabel('D [Angstroms]');
-    set(gca,'FontSize',30);
+    set(gca,'FontSize',20);
+    title('dspace vs int XRD');
+    
+    subplot(132);
+    errorbar(contour_values_down,distr_struct.tilt_tot,distr_struct.tilt_tot_sigma)
+    ylim([0.0 1.0]);
+    xlabel(' bins of % of diffr. inten.');
+    ylabel('total tilt [degrees]');
+    set(gca,'FontSize',20);
+    title('total tilt vs int XRD');
+    
+    subplot(133);
+    errorbar(contour_values_down,distr_struct.grad_tilt_tot,distr_struct.grad_tilt_tot_sigma)
+     ylim([0.0 1.0]);
+    xlabel(' bins of % of diffr. inten.');
+    ylabel('grad total tilt');
+    set(gca,'FontSize',20);
+    title('grad. of total tilt vs int XRD');
+    
+    
     
 end
 

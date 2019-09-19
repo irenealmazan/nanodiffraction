@@ -77,12 +77,52 @@ else
         eval(['RockCurve' num2str(Grain_array(gg)) '_script']);
         
         %allgrains(gg) = load(['results_paper/Figure5_grain' num2str(Grain_array(gg)) '_struct.mat']);
-        load(['results_paper/Figure5_grain' num2str(Grain_array(gg)) '_struct.mat']);
+        load(['results_paper/grain' num2str(Grain_array(gg)) '_struct.mat']);
         
         
         
         mask = grain_struct.map2D_SumInt > percent*max(max(grain_struct.map2D_SumInt));
+        
+               
+        switch gg
+            
+            case 1
+                grain_struct.extra_shift = [0 100];
+                %mask(17:21,261) = 0;
+            case 2
+                grain_struct.extra_shift = [0 0];
+                mask(16,132) = 0;
+                mask(16,133) = 0;
+                %grain_struct.ylim_for_tilt_tot = [0.15 0.7];
+                %grain_struct.ylim_for_dspace = [3.72 3.76];%[3.73 3.77];
+            case 3
+                grain_struct.extra_shift = [0 0];
+                %grain_struct.ylim_for_tilt_tot = [0.0 0.4];
+                %grain_struct.ylim_for_dspace = [3.76 3.78];%[3.76 3.8];
+                grain_struct.window_for_maps = [1 size(grain_struct.map2D_SumInt,1) 1 size(grain_struct.map2D_SumInt,2)];
+            case 4
+                grain_struct.extra_shift = [0 10];
+                mask(22:29,437:550) = 0;
+
+                %grain_struct.ylim_for_tilt_tot = [0.0 1.0];
+                %grain_struct.ylim_for_dspace = [3.72 3.76];%[3.67 3.75];
+                grain_struct.window_for_maps = [1 size(grain_struct.map2D_SumInt,1) 1 size(grain_struct.map2D_SumInt,2)];
+                
+            case 5
+                grain_struct.extra_shift = [0 20];
+                %mask(14:27,50) = 0;
+                %grain_struct.ylim_for_tilt_tot = [0.0 0.3];
+                %grain_struct.ylim_for_dspace = [min(min(grain_struct.dspace)) max(max(grain_struct.dspace))];%[3.75 3.762];%[3.74 3.775];
+                grain_struct.window_for_maps = [1 size(grain_struct.map2D_SumInt,1) 1 size(grain_struct.map2D_SumInt,2)];
+        end
+        
+        
+        
         grain_struct.mask0 = mask;
+  
+        
+        [mask_nan] = ND_data_processing.turnMaskInNan(double(mask));
+        
           %{
         mask = allgrains(gg).grain_struct.map2D_SumInt > percent*max(max(allgrains(gg).grain_struct.map2D_SumInt));
         
@@ -103,28 +143,11 @@ else
         %}
         
         
-        switch gg
-            
-            case 1                
-                grain_struct.extra_shift = [0 100];
-                grain_struct.ylim_for_tilt_tot = [0.0 0.4];
-                grain_struct.ylim_for_dspace = [3.8 3.86];
-            case 2
-                grain_struct.ylim_for_tilt_tot = [0.15 0.7];
-                grain_struct.ylim_for_dspace = [3.73 3.77];
-            case 3
-                grain_struct.ylim_for_tilt_tot = [0.0 0.4];
-                grain_struct.ylim_for_dspace = [3.76 3.8];
-            case 4
-                grain_struct.extra_shift = [0 10];
-                grain_struct.ylim_for_tilt_tot = [0.0 2.0];
-                grain_struct.ylim_for_dspace = [3.67 3.75];
-            case 5
-                grain_struct.extra_shift = [0 20];
-                grain_struct.ylim_for_tilt_tot = [0.0 0.2];
-                grain_struct.ylim_for_dspace = [3.74 3.775];
-        end
-        
+       grain_struct.ylim_for_tilt_tot = [min(min(grain_struct.tilt_tot.*mask_nan)) max(max(grain_struct.tilt_tot.*mask_nan))];
+       grain_struct.ylim_for_dspace = [min(min(grain_struct.dspace.*mask_nan)) max(max(grain_struct.dspace.*mask_nan))];%[3.80 3.86];%[3.8 3.86];
+       grain_struct.ylim_for_grad_tilt_tot = [min(min(grain_struct.grad_tilt_tot.*mask_nan)) max(max(grain_struct.grad_tilt_tot.*mask_nan))];
+
+  
         
         grain_struct.Yval_range = [min(grain_struct.Yval) max(grain_struct.Yval)];
         grain_struct.Yval_step =  (max(grain_struct.Yval)-min(grain_struct.Yval))/numel(grain_struct.Yval);
@@ -133,7 +156,7 @@ else
         grain_struct.theta_last = th_end;
 
         
-        
+        %%{
         
         fields_to_plot = {'dspace'};
         
@@ -146,12 +169,14 @@ else
             'min_contour',5,'spec_ylim',0,'color_array',grain_struct.color_array,'size_figure',[-97 33 1378 672],...
             'figNum',fig_num,'font',30);
         
-        
-        name_fig = ['results_paper/Figure6_7/' fields_to_plot{1} '_' num2str(Grain_array(gg)) ];
+        %{
+        name_fig = ['results_paper/Figure7/' fields_to_plot{1} '_' num2str(Grain_array(gg)) ];
         savefig(figure(fig_number),[name_fig '.fig']);
         print(figure(fig_number),name_fig,'-dpdf','-bestfit');%,'PaperOrientation','landscape');
         print('-r600',figure(fig_number),name_fig,'-dpng');
-        
+        %}
+            
+            
         fields_to_plot = {'tilt_tot'};
         
         
@@ -163,12 +188,31 @@ else
             'min_contour',5,'spec_ylim',0,'color_array',grain_struct.color_array,'size_figure',[-97 33 1378 672],...
             'figNum',fig_num,'font',30);
         
-        
-        name_fig = ['results_paper/Figure6_7/' fields_to_plot{1} '_' num2str(Grain_array(gg)) ];
+        %%{
+        name_fig = ['results_paper/Figure7/' fields_to_plot{1} '_' num2str(Grain_array(gg)) ];
         savefig(figure(fig_number),[name_fig '.fig']);
         print(figure(fig_number),name_fig,'-dpdf','-bestfit');%,'PaperOrientation','landscape');
         print('-r600',figure(fig_number),name_fig,'-dpng');
+        %}
+        %}
         
+         fields_to_plot = {'grad_tilt_tot'};
+        
+        
+        fig_num = 200 + (gg-1);
+        fig_number = ND_paper_figures.display2DmapContoursfig5(grain_struct,...
+            fields_to_plot,'extra_shift',grain_struct.extra_shift,...
+        'Yval_lim',[-2 2],...
+            'window',grain_struct.window_for_maps,'contours_to_plot',grain_struct.contours_to_plot,'plot_contours',0,...
+            'min_contour',5,'spec_ylim',0,'color_array',grain_struct.color_array,'size_figure',[-97 33 1378 672],...
+            'figNum',fig_num,'font',30);
+        
+        %{
+        name_fig = ['results_paper/Figure7/' fields_to_plot{1} '_' num2str(Grain_array(gg)) ];
+        savefig(figure(fig_number),[name_fig '.fig']);
+        print(figure(fig_number),name_fig,'-dpdf','-bestfit');%,'PaperOrientation','landscape');
+        print('-r600',figure(fig_number),name_fig,'-dpng');
+        %}
         
         
     end

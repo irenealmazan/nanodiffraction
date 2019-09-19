@@ -2,21 +2,54 @@
 % lattice parameter and the total tilt as a function of the integrated
 % diffracted intensity, which are displayed in Fig. 7
 
-clear all; close all;
+%clear all; close all;
 
 addpath(genpath('./nanodiff_functions'));
 addpath(genpath(['/Users/ialmazn/Box Sync/Nanowire_ptychography/NSLS II/NSLS II March 2017/Irene_Analysis/m_scripts']));
 
 datapath = './Hruszkewycz_2018Q1/Data';
 
+folder_path = './results_paper/Figure7/';
 
 % what to do?
 flag_read_HXN_parameters = 1;
 do_all_analysis = 1;
 
 
-Grain_array = [1];%[1];
+Grain_array = [12];%[1];
 
+load(['./results_paper/grain' num2str(Grain_array(1)) '_struct.mat']);
+
+switch Grain_array
+    case 1
+        grain_struct.ylim_for_tilt_tot = [0.0 0.8];
+        grain_struct.ylim_for_dspace = [3.78 3.86];%[3.8 3.86];
+        grain_struct.ylim_for_tilt_x = [-0.4000 0.6000];
+        grain_struct.ylim_for_tilt_y = [-0.4000 0.6000];
+    case 7
+        grain_struct.ylim_for_tilt_tot = [0.0 0.8];
+        grain_struct.ylim_for_dspace = [3.70 3.77];%[3.7 3.77];
+        grain_struct.ylim_for_tilt_x = [-0.4000 0.6000];
+        grain_struct.ylim_for_tilt_y = [-0.4000 0.6000];
+    case 9
+        grain_struct.ylim_for_tilt_tot =  [0.0 0.8];
+        grain_struct.ylim_for_dspace = [3.65 3.78];%[3.76 3.8];
+        grain_struct.ylim_for_tilt_x = [-0.4000 0.6000];
+        grain_struct.ylim_for_tilt_y = [-0.4000 0.6000];
+    case 11
+        grain_struct.ylim_for_tilt_tot = [0.0 0.8];
+        grain_struct.ylim_for_dspace = [3.64 3.8];%[3.67 3.75];
+        grain_struct.ylim_for_tilt_x = [-0.4000 0.6000];
+        grain_struct.ylim_for_tilt_y = [-0.4000 0.6000];
+    case 12
+        grain_struct.ylim_for_tilt_tot = [0.0 0.8];
+        grain_struct.ylim_for_dspace = [3.7 3.78]%[ 3.6544    3.8044]%[3.75 3.765];%[3.74 3.775];
+        grain_struct.ylim_for_tilt_x = [-0.4000 0.6000];
+        grain_struct.ylim_for_tilt_y = [-0.4000 0.6000];
+        
+end
+
+%{
 flag_read_HXN_parameters = 1;
 
 if do_all_analysis == 1
@@ -26,6 +59,7 @@ eval(['RockCurve' num2str(Grain_array(1)) '_script']);
 
 load([filename_toload '_analysis_aligned' num2str(lst(1)) '_' num2str(lst(end)) '.mat'],'dat','centroid_struct','struct_centroidShift');
 
+%{
 [thetalist,rock_curve] = ND_display_data.displayRockCurve(dat,'figNum',900);
 
 [~,dat] = ND_data_processing.calculateMask(dat,0.01);
@@ -40,14 +74,14 @@ dat.Ycentroids = centroid_struct.Ycentroids;
 dat.Thcentroids = centroid_struct.Thcentroids;
 
 [struct_centroidShift] = ND_analysis.computeCentroidShiftAndStrain(dat,twoTheta,del,gam,detdist,ROIxstart,ROIxsize,ROIystart,ROIysize,[22 543 548 201],0);
-
+%}
 contour_values_up = [2:1:100]*0.01;%[2:1:90]*0.01;%[2:1:6 7:2:22 22:5:30 35:10:90]*0.01; %grains 1, 7 and 9%[7:2:20 22:5:30 35:10:90]*0.01; %Grain 11 and 12% 
 contour_values_down = [1:1:99]*0.01;%[1:1:89]*0.01;%[1:1:5 6:2:20 20:5:25 30:10:85]*0.01;% grains 1, 7 and 9% [6:2:18 20:5:25 30:10:85]*0.01; %Grain 11 and 12%
 [distr_struct_dspace,mask_struct] = ND_analysis.computeStrainOrTiltContours(dat,struct_centroidShift,'dspace',contour_values_up,contour_values_down);
 [distr_struct_tilt_tot,~] = ND_analysis.computeStrainOrTiltContours(dat,struct_centroidShift,'tilt_tot',contour_values_up,contour_values_down);
 
 
-
+%{
 grain_struct.map2D_SumInt = dat.map2D_SumInt;
 grain_struct.mask0 = dat.mask;
 grain_struct.mask_rock = dat.mask_rock;
@@ -81,14 +115,16 @@ grain_struct.rock_curve = rock_curve;
 
 grain_struct.window_for_maps = [1,size(dat.xsuperGrid_s,1),1,size(dat.xsuperGrid_s,2)];
 grain_struct.extra_shift = [0 70];
+%}
 
+save([folder_path  num2str(Grain_array(1)) '_struct.mat'],'grain_struct');
 else
-   load(['./results_paper/Figure5_grain' num2str(Grain_array(1)) '_struct.mat'],'grain_struct');
+   load([folder_path  num2str(Grain_array(1)) '_struct.mat'],'grain_struct');
   
 end
-
-fig_num = 100;
-hfig = ND_paper_figures.display2DmapContoursfig5(grain_struct,{'map2D_SumInt','tilt_x','tilt_y','tilt_tot','dspace'},'extra_shift',grain_struct.extra_shift,'window',grain_struct.window_for_maps,'contours_to_plot',grain_struct.contours_to_plot,'color_array',grain_struct.color_array,'size_figure',[6 60 472 691],'figNum',fig_num);
+%}
+%fig_num = 100;
+%hfig = ND_paper_figures.display2DmapContoursfig5(grain_struct,{'map2D_SumInt','tilt_x','tilt_y','tilt_tot','dspace'},'extra_shift',grain_struct.extra_shift,'window',grain_struct.window_for_maps,'contours_to_plot',grain_struct.contours_to_plot,'color_array',grain_struct.color_array,'size_figure',[6 60 472 691],'figNum',fig_num);
 
 
 
@@ -96,6 +132,7 @@ ND_paper_figures.display2DmapHistogramfig5(grain_struct,{'dspace_distr','sigma_d
 ND_paper_figures.display2DmapHistogramfig5(grain_struct,{'tilt_tot_distr','sigma_tilt_tot_distr'},'ylabel','Total tilt [degrees]','ylim',grain_struct.ylim_for_tilt_tot,'figNum',2);
 
 % histograms:
+%{
 numbin = 30;
 
 figNum = 10;
@@ -110,13 +147,13 @@ grain_struct.numbins_tilt_tot = [grain_struct.ylim_for_tilt_tot(1):(grain_struct
 grain_struct.hstruct_dspace = hstruct_dspace;
 grain_struct.hstruct_tilt_tot = hstruct_tilt_tot;
  
-save(['./results_paper/Figure5_grain' num2str(Grain_array(1)) '_struct.mat'],'grain_struct','-v7.3');
+%save([folder_path  num2str(Grain_array(1)) '_struct.mat'],'grain_struct','-v7.3');
 
-savefig(figure(fig_num),['./results_paper/Figure5_grain' num2str(Grain_array(1)) '.fig']);
-savefig(figure(1),['./results_paper/Figure5_grain' num2str(Grain_array(1)) 'dspace_hist.fig']);
-savefig(figure(2),['./results_paper/Figure5_grain' num2str(Grain_array(1)) 'tilt_hist.fig']);
+savefig(figure(fig_num),[folder_path 'grain' num2str(Grain_array(1)) '.fig']);
+savefig(figure(1),[folder_path 'grain' num2str(Grain_array(1)) 'dspace_hist.fig']);
+savefig(figure(2),[folder_path 'grain' num2str(Grain_array(1)) 'tilt_hist.fig']);
 
-savefig(figure(10),['./results_paper/Figure5_grain' num2str(Grain_array(1)) 'dspace_hist.fig']);
-savefig(figure(11),['./results_paper/Figure5_grain' num2str(Grain_array(1)) 'tilt_hist.fig']);
-  
+savefig(figure(10),[folder_path 'grain' num2str(Grain_array(1)) 'dspace_hist.fig']);
+savefig(figure(11),[folder_path 'grain' num2str(Grain_array(1)) 'tilt_hist.fig']);
+  %}
  
