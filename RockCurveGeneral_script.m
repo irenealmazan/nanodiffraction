@@ -19,7 +19,7 @@ filename_toload = 'results/data_scan_onlyread_nopad';
 
 %% what are we going to do?
 flag_read_forfirsttime = 0;
-flag_make_supergrid = 0;
+flag_make_supergrid = 1;
 flag_doAlignment = 0;
 flag_analyze = 0;
 flag_display = 1;
@@ -83,34 +83,34 @@ eval('Init_parameters');
 
 
 if flag_read_forfirsttime == 1
-
- [dat]=ND_read_data.ThetaScan_film_onlyread(datapath,lst,XRFchan,'XBICchan',XBICchan,'thetalist',angs,'innerpts',innerpts,'outerpts',outerpts,'innerpts_zeropad',innerpts_zeropad,'outerpts_zeropad',outerpts_zeropad,'showmerlin',0,'inneraxis',inneraxis,'do_padding',0,'do_align',0,'do_Ref_XRF0',0,'use_fitXRF',use_fitXRF);
- save([filename '_onlyread_nopad' num2str(lst(1)) '_' num2str(lst(end)) '.mat'],'dat','-v7.3');
- 
-% else
-% 
-%     load([filename_toload num2str(lst(1)) '_' num2str(lst(end)) '.mat'],'dat');    
- 
+    [dat]=ND_read_data.ThetaScan_film_onlyread(datapath,lst,XRFchan,'XBICchan',XBICchan,'thetalist',angs,'innerpts',innerpts,'outerpts',outerpts,'innerpts_zeropad',innerpts_zeropad,'outerpts_zeropad',outerpts_zeropad,'showmerlin',0,'inneraxis',inneraxis,'do_padding',0,'do_align',0,'do_Ref_XRF0',0,'use_fitXRF',use_fitXRF);
+    save([filename '_onlyread_nopad' num2str(lst(1)) '_' num2str(lst(end)) '.mat'],'dat','-v7.3');
+else
+    
+    load([filename_toload num2str(lst(1)) '_' num2str(lst(end)) '.mat'],'dat');
 end
 
 
 %% Analisis section
 
 if flag_make_supergrid == 1
-    if exist('dat','var')
-        load([filename_toload num2str(lst(1)) '_' num2str(lst(end)) '.mat'],'dat');
-    end
+%     if exist('dat','var')
+%         load([filename_toload num2str(lst(1)) '_' num2str(lst(end)) '.mat'],'dat');
+%     end
     
     delta_x_microns = 0.1; % step in the sample frame in microns
     dat.delta_x_microns = delta_x_microns;
     
-    [dat] = ND_read_data.read_tiff_and_getLinearDatain2DMap(datapath,char('x_pos'),lst,dat,'innerpts',innerpts,'outerpts',outerpts,'innerpts_zeropad',innerpts_zeropad,'outerpts_zeropad',outerpts_zeropad,'do_padding',0);
-    [dat] = ND_read_data.read_tiff_and_getLinearDatain2DMap(datapath,char('y_pos'),lst,dat,'innerpts',innerpts,'outerpts',outerpts,'innerpts_zeropad',innerpts_zeropad,'outerpts_zeropad',outerpts_zeropad,'do_padding',0);
+    [dat] = ND_read_data.read_tiff_and_getLinearDatain2DMap(datapath,char('x_pos'),lst,dat,'donorm',0,'innerpts',innerpts,'outerpts',outerpts,'innerpts_zeropad',innerpts_zeropad,'outerpts_zeropad',outerpts_zeropad,'do_padding',0);
+    [dat] = ND_read_data.read_tiff_and_getLinearDatain2DMap(datapath,char('y_pos'),lst,dat,'donorm',0,'innerpts',innerpts,'outerpts',outerpts,'innerpts_zeropad',innerpts_zeropad,'outerpts_zeropad',outerpts_zeropad,'do_padding',0);
+    [dat] = ND_read_data.read_tiff_and_getLinearDatain2DMap(datapath,char('sclr1_ch4'),lst,dat,'donorm',0,'innerpts',innerpts,'outerpts',outerpts,'innerpts_zeropad',innerpts_zeropad,'outerpts_zeropad',outerpts_zeropad,'do_padding',0);
+
     [dat] = ND_data_processing.convertHXNtoSampleFrame(dat);
-    
     
     [dat,xsuperGrid_s,ysuperGrid_s] = ND_data_processing.makeSuperGrid(dat,'XRF',delta_x_microns,'do_zeropadding',1,'innerpts_zeropad',innerpts_zeropad,'outerpts_zeropad',outerpts_zeropad);
     [dat,xsuperGrid_s,ysuperGrid_s] = ND_data_processing.makeSuperGrid(dat,'PC',delta_x_microns,'do_zeropadding',1,'innerpts_zeropad',innerpts_zeropad,'outerpts_zeropad',outerpts_zeropad);
+    [dat,xsuperGrid_s,ysuperGrid_s] = ND_data_processing.makeSuperGrid(dat,'sclr1_ch4',delta_x_microns,'do_zeropadding',1,'innerpts_zeropad',innerpts_zeropad,'outerpts_zeropad',outerpts_zeropad);
+
     for ii = 1:numel(dat.scan)
         for jj = 1:size(dat.scan(1).dataout,3)
             chan = ['dataout' num2str(jj)];

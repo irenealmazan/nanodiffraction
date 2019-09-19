@@ -1,10 +1,6 @@
-% This is the script to make figure 5 where we show for grain 1 the
-% following
-%(a) Full diffraction intensity map with rings (contours), 
-%(b) azimuthal tilt, 
-%(c) outofplane-tilt, 
-%(c) total tilt, 
-%(d) strain/dspacing
+% This is the script which analyzes the and display the diagrams of the
+% lattice parameter and the total tilt as a function of the integrated
+% diffracted intensity, which are displayed in Fig. 7
 
 clear all; close all;
 
@@ -82,8 +78,9 @@ grain_struct.ylim_for_tilt_y = [-.4 .6];%[3.78 3.86]; Grain 1
 grain_struct.thetalist = thetalist;
 grain_struct.rock_curve = rock_curve;
 
+
 grain_struct.window_for_maps = [1,size(dat.xsuperGrid_s,1),1,size(dat.xsuperGrid_s,2)];
-grain_struct.extra_shift = [0 0];
+grain_struct.extra_shift = [0 70];
 
 else
    load(['./results_paper/Figure5_grain' num2str(Grain_array(1)) '_struct.mat'],'grain_struct');
@@ -92,6 +89,9 @@ end
 
 fig_num = 100;
 hfig = ND_paper_figures.display2DmapContoursfig5(grain_struct,{'map2D_SumInt','tilt_x','tilt_y','tilt_tot','dspace'},'extra_shift',grain_struct.extra_shift,'window',grain_struct.window_for_maps,'contours_to_plot',grain_struct.contours_to_plot,'color_array',grain_struct.color_array,'size_figure',[6 60 472 691],'figNum',fig_num);
+
+
+
 ND_paper_figures.display2DmapHistogramfig5(grain_struct,{'dspace_distr','sigma_dspace_distr'},'ylabel','D [Angstroms]','ylim',grain_struct.ylim_for_dspace,'figNum',1);
 ND_paper_figures.display2DmapHistogramfig5(grain_struct,{'tilt_tot_distr','sigma_tilt_tot_distr'},'ylabel','Total tilt [degrees]','ylim',grain_struct.ylim_for_tilt_tot,'figNum',2);
 
